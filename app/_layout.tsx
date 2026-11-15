@@ -1,24 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, View } from 'react-native';
+import { AppState, Platform, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFinanceStore } from '@/store/useFinanceStore';
 import { THEME } from '@/constants/theme';
 import { StartupAnimation } from '@/components/StartupAnimation';
+import { checkAndTriggerScheduledReminders } from '@/utils/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* ignore */
 });
 
-export default function RootLayout() {
+function RootTabs() {
   const loadData = useFinanceStore((s) => s.loadData);
   const checkAndAdvanceMonth = useFinanceStore((s) => s.checkAndAdvanceMonth);
   const isLoaded = useFinanceStore((s) => s.isLoaded);
   const insets = useSafeAreaInsets();
-  const bottomPadding = insets.bottom > 0 ? insets.bottom + 4 : 12;
+
+  // Mobile responsiveness:
+  // On iOS Safari / PWA, the home indicator requires at least 26px bottom padding so labels are never cut off.
+  // On native iOS/Android, insets.bottom gives the exact system inset.
+  const isWeb = Platform.OS === 'web';
+  const bottomPadding = Math.max(insets.bottom, isWeb ? 26 : 12);
+  const tabHeight = 58 + bottomPadding;
 
   const [isAnimationFinished, setIsAnimationFinished] = useState(false);
 
@@ -30,16 +37,21 @@ export default function RootLayout() {
       /* ignore */
     });
 
+    // Check for scheduled expense reminders on startup
+    checkAndTriggerScheduledReminders();
+
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         checkAndAdvanceMonth();
+        checkAndTriggerScheduledReminders();
       }
     });
 
-    // Check periodically in case month changes while app is open
+    // Check periodically in case month changes or reminder time arrives
     const interval = setInterval(() => {
       checkAndAdvanceMonth();
-    }, 60000);
+      checkAndTriggerScheduledReminders();
+    }, 30000);
 
     return () => {
       subscription.remove();
@@ -59,7 +71,7 @@ export default function RootLayout() {
             borderTopWidth: 1,
             paddingTop: 8,
             paddingBottom: bottomPadding,
-            height: 56 + bottomPadding,
+            height: tabHeight,
             elevation: 8,
             shadowColor: '#0F172A',
             shadowOffset: { width: 0, height: -2 },
@@ -112,5 +124,13 @@ export default function RootLayout() {
         />
       )}
     </View>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <RootTabs />
+    </SafeAreaProvider>
   );
 }

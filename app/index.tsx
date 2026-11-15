@@ -258,23 +258,29 @@ export default function Dashboard() {
   if (!isConfigured || baseAllowance === null || currentRemaining === null || totalBank === null) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.setupContent}>
-          <View style={styles.setupIcon}>
-            <Ionicons name="wallet-outline" size={32} color={THEME.colors.pillDark} />
+        <ScrollView
+          contentContainerStyle={styles.setupScroll}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.setupContent}>
+            <View style={styles.setupIcon}>
+              <Ionicons name="wallet-outline" size={32} color={THEME.colors.pillDark} />
+            </View>
+            <Text style={styles.setupTitle}>Set up your ledger</Text>
+            <Text style={styles.setupText}>
+              Add your monthly allowance, savings account name, and current savings balance to begin.
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => router.push('/settings')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryButtonText}>Set up budget</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
-          <Text style={styles.setupTitle}>Set up your ledger</Text>
-          <Text style={styles.setupText}>
-            Add your monthly allowance, savings account name, and current savings balance to begin.
-          </Text>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => router.push('/settings')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.primaryButtonText}>Set up budget</Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -469,7 +475,9 @@ export default function Dashboard() {
                   <View style={styles.dailyCardHeader}>
                     <View>
                       <View style={styles.dayTitleRow}>
-                        <Text style={styles.dayName}>{dayName}</Text>
+                        <Text style={styles.dayName} numberOfLines={1} adjustsFontSizeToFit>
+                          {dayName}
+                        </Text>
                         {dateKey === getDateKey() && (
                           <View style={styles.todayBadge}>
                             <Text style={styles.todayBadgeText}>TODAY</Text>
@@ -531,7 +539,9 @@ export default function Dashboard() {
             </View>
             <Text style={styles.totalLabel}>Total</Text>
           </View>
-          <Text style={styles.totalAmount}>₱ {formatCurrency(dayTotal)}</Text>
+          <Text style={styles.totalAmount} numberOfLines={1} adjustsFontSizeToFit>
+            ₱ {formatCurrency(dayTotal)}
+          </Text>
         </View>
 
         <SavingsCard
@@ -759,7 +769,17 @@ const styles = StyleSheet.create({
   weekAmount: { alignItems: 'flex-end' },
   weekAmountLabel: { color: THEME.colors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
   weekAmountValue: { color: THEME.colors.textDark, fontSize: 15, fontWeight: '800', marginTop: 2 },
-  setupContent: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 32 },
+  setupScroll: {
+    alignItems: 'center',
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  setupContent: {
+    alignItems: 'center',
+    maxWidth: 380,
+    width: '100%',
+  },
   setupIcon: {
     alignItems: 'center',
     backgroundColor: THEME.colors.mintCard,

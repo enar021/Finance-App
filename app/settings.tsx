@@ -5,6 +5,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -17,6 +18,14 @@ import SavingsHistoryModal from '@/components/SavingsHistoryModal';
 import { THEME } from '@/constants/theme';
 import { useFinanceStore } from '@/store/useFinanceStore';
 import { formatCurrency, formatMonthLabel } from '@/utils/dates';
+import {
+  areNotificationsEnabled,
+  getNotificationPermissionStatus,
+  requestNotificationPermission,
+  sendTestReminder,
+  setNotificationsEnabled,
+  type NotificationPermissionStatus,
+} from '@/utils/notifications';
 
 function parseMoney(value: string): number | null {
   const normalized = value.replace(/,/g, '').trim();
@@ -36,12 +45,54 @@ export default function SettingsScreen() {
     stats.totalBank === null ? '' : stats.totalBank.toString()
   );
   const [showSavingsModal, setShowSavingsModal] = useState(false);
+  const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [permStatus, setPermStatus] = useState<NotificationPermissionStatus>('default');
 
   useEffect(() => {
     setBankName(stats.bankName);
     setAllowanceInput(stats.baseAllowance === null ? '' : stats.baseAllowance.toString());
     setSavingsInput(stats.totalBank === null ? '' : stats.totalBank.toString());
+    areNotificationsEnabled().then(setRemindersEnabled);
+    setPermStatus(getNotificationPermissionStatus());
   }, [stats.bankName, stats.baseAllowance, stats.totalBank]);
+
+  const handleToggleReminders = async (val: boolean) => {
+    setRemindersEnabled(val);
+    await setNotificationsEnabled(val);
+    if (val) {
+      const status = await requestNotificationPermission();
+      setPermStatus(status);
+      if (status === 'granted') {
+        Alert.alert(
+          'Reminders Active 🔔',
+          "You will receive reminders at 1:00 PM and 8:30 PM daily to record your expenses."
+        );
+      } else if (status === 'denied') {
+        Alert.alert(
+          'Permission Blocked',
+          'Notifications are blocked in your browser settings. Please allow notifications for Penny Wise in your browser settings.'
+        );
+      }
+    }
+  };
+
+  const handleTestReminder = async () => {
+    const result = await sendTestReminder();
+    setPermStatus(result.status);
+    if (result.ok) {
+      Alert.alert('Test Sent! 🔔', 'Check your device notification banner.');
+    } else if (result.status === 'denied') {
+      Alert.alert(
+        'Permission Blocked',
+        'Please allow notifications for Penny Wise in your browser site settings.'
+      );
+    } else if (result.status === 'unsupported') {
+      Alert.alert(
+        'Notifications',
+        'Web notifications require adding Penny Wise to your Home Screen on iOS (Safari > Share > Add to Home Screen).'
+      );
+    }
+  };
 
   const isConfigured = Boolean(
     stats.bankName && stats.baseAllowance !== null && stats.totalBank !== null
@@ -173,6 +224,77 @@ export default function SettingsScreen() {
             </>
           )}
 
+          {/* Daily Reminders Card */}
+          <View style={styles.card}>
+            <View style={styles.reminderHeader}>
+              <View style={styles.cardHeading}>
+                <View style={[styles.iconCircle, styles.reminderIcon]}>
+                  <Ionicons name="notifications-outline" size={18} color="#D97706" />
+                </View>
+                <View>
+                  <View style={styles.titleRowWithBadge}>
+                    <Text style={styles.cardTitle}>Daily Reminders</Text>
+                    <View
+                      style={[
+                        styles.permBadge,
+                        permStatus === 'granted' ? styles.permBadgeGreen : styles.permBadgeAmber,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.permText,
+                          permStatus === 'granted' ? styles.permTextGreen : styles.permTextAmber,
+                        ]}
+                      >
+                        {permStatus === 'granted' ? 'Active' : 'Setup'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.reminderSubtitle}>Twice daily expense check-ins</Text>
+                </View>
+              </View>
+              <Switch
+                value={remindersEnabled}
+                onValueChange={handleToggleReminders}
+                trackColor={{ false: '#CBD5E1', true: THEME.colors.pillDark }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.reminderScheduleList}>
+              <View style={styles.reminderRow}>
+                <View style={styles.timeBadge}>
+                  <Ionicons name="sunny-outline" size={15} color="#D97706" />
+                  <Text style={styles.timeBadgeText}>1:00 PM</Text>
+                </View>
+                <View style={styles.reminderInfo}>
+                  <Text style={styles.reminderTitle}>Midday Check-in</Text>
+                  <Text style={styles.reminderDesc}>Log lunch & morning purchases</Text>
+                </View>
+              </View>
+
+              <View style={styles.reminderRow}>
+                <View style={[styles.timeBadge, styles.eveningBadge]}>
+                  <Ionicons name="moon-outline" size={15} color="#4F46E5" />
+                  <Text style={[styles.timeBadgeText, styles.eveningBadgeText]}>8:30 PM</Text>
+                </View>
+                <View style={styles.reminderInfo}>
+                  <Text style={styles.reminderTitle}>Evening Wrap-up</Text>
+                  <Text style={styles.reminderDesc}>{"Record today's remaining spending"}</Text>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.testNotificationBtn}
+              onPress={handleTestReminder}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="paper-plane-outline" size={16} color={THEME.colors.pillDark} />
+              <Text style={styles.testNotificationText}>Send Test Reminder</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity onPress={handleReset} style={styles.resetButton} activeOpacity={0.7}>
             <Text style={styles.resetText}>Clear all data</Text>
           </TouchableOpacity>
@@ -270,4 +392,87 @@ const styles = StyleSheet.create({
   rolloverButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   resetButton: { alignItems: 'center', paddingVertical: 12 },
   resetText: { color: THEME.colors.indicatorRed, fontSize: 14, fontWeight: '800' },
+  reminderHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  titleRowWithBadge: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  permBadge: {
+    borderRadius: THEME.radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  permBadgeGreen: { backgroundColor: '#D1FAE5' },
+  permBadgeAmber: { backgroundColor: '#FEF3C7' },
+  permText: { fontSize: 10, fontWeight: '800' },
+  permTextGreen: { color: '#065F46' },
+  permTextAmber: { color: '#B45309' },
+  reminderIcon: { backgroundColor: '#FEF3C7' },
+  reminderSubtitle: { color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 2 },
+  reminderScheduleList: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: THEME.radius.md,
+    gap: 12,
+    marginBottom: 16,
+    padding: 14,
+  },
+  reminderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timeBadge: {
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  timeBadgeText: {
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  eveningBadge: {
+    backgroundColor: '#EEF2FF',
+  },
+  eveningBadgeText: {
+    color: '#4338CA',
+  },
+  reminderInfo: { flex: 1 },
+  reminderTitle: {
+    color: THEME.colors.textDark,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  reminderDesc: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  testNotificationBtn: {
+    alignItems: 'center',
+    backgroundColor: THEME.colors.mintCard,
+    borderColor: '#CCE2D8',
+    borderRadius: THEME.radius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  testNotificationText: {
+    color: THEME.colors.pillDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
 });

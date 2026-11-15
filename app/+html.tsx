@@ -40,6 +40,7 @@ export default function Root({ children }: PropsWithChildren) {
             __html: `
               html, body, #root {
                 height: 100%;
+                height: 100dvh;
                 width: 100%;
                 margin: 0;
                 padding: 0;
@@ -51,6 +52,20 @@ export default function Root({ children }: PropsWithChildren) {
                 display: flex;
                 flex-direction: column;
                 min-height: 100%;
+                min-height: 100dvh;
+              }
+            `,
+          }}
+        />
+
+        {/* Service Worker registration for mobile PWA notifications */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/Finance-App/sw.js').catch(function() {});
+                });
               }
             `,
           }}
