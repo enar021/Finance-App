@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -45,6 +46,7 @@ export default function SettingsScreen() {
     stats.totalBank === null ? '' : stats.totalBank.toString()
   );
   const [showSavingsModal, setShowSavingsModal] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [permStatus, setPermStatus] = useState<NotificationPermissionStatus>('default');
 
@@ -295,11 +297,104 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Privacy & Legal Disclaimer Row */}
+          <TouchableOpacity
+            style={styles.legalButton}
+            onPress={() => setShowLegalModal(true)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.legalButtonLeft}>
+              <View style={styles.legalIconCircle}>
+                <Ionicons name="shield-checkmark" size={18} color="#059669" />
+              </View>
+              <View>
+                <Text style={styles.legalButtonTitle}>Privacy & Disclaimers</Text>
+                <Text style={styles.legalButtonSubtitle}>100% on-device • No tracking • Legal notice</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={THEME.colors.textMuted} />
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={handleReset} style={styles.resetButton} activeOpacity={0.7}>
             <Text style={styles.resetText}>Clear all data</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Privacy & Legal Disclaimers Modal */}
+      {showLegalModal && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowLegalModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.legalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowLegalModal(false)}
+          >
+            <View style={styles.legalSheet}>
+              <View style={styles.legalHandle} />
+              <View style={styles.legalHeader}>
+                <View style={styles.legalBadgeIcon}>
+                  <Ionicons name="shield-checkmark" size={26} color="#059669" />
+                </View>
+                <Text style={styles.legalModalTitle}>Privacy & Disclaimers</Text>
+                <Text style={styles.legalModalSub}>Penny Wise Personal Finance</Text>
+              </View>
+
+              <ScrollView style={styles.legalScroll} showsVerticalScrollIndicator={false}>
+                <View style={styles.legalCard}>
+                  <View style={styles.legalCardHeader}>
+                    <Ionicons name="lock-closed" size={17} color={THEME.colors.pillDark} />
+                    <Text style={styles.legalCardTitle}>100% On-Device Privacy</Text>
+                  </View>
+                  <Text style={styles.legalCardBody}>
+                    Penny Wise runs completely locally on your device. Your bank names, monthly allowance, daily
+                    expenses, and savings balances are stored solely in your device&apos;s local storage. We do not
+                    collect, transmit, analyze, or sell any personal or financial data. No remote analytics or
+                    tracking cookies are used.
+                  </Text>
+                </View>
+
+                <View style={styles.legalCard}>
+                  <View style={styles.legalCardHeader}>
+                    <Ionicons name="alert-circle" size={17} color="#D97706" />
+                    <Text style={styles.legalCardTitle}>Informational Tool Only</Text>
+                  </View>
+                  <Text style={styles.legalCardBody}>
+                    Penny Wise is an informational personal budgeting calculator and record-keeping tool. It does
+                    not provide professional financial, investment, legal, or tax advice. Penny Wise is not a
+                    bank, financial institution, or registered investment advisor. Users are solely responsible
+                    for managing their own finances and verifying figures.
+                  </Text>
+                </View>
+
+                <View style={styles.legalCard}>
+                  <View style={styles.legalCardHeader}>
+                    <Ionicons name="document-text" size={17} color="#64748B" />
+                    <Text style={styles.legalCardTitle}>Terms & &ldquo;As Is&rdquo; Provision</Text>
+                  </View>
+                  <Text style={styles.legalCardBody}>
+                    This application is provided &ldquo;as is&rdquo;, without warranty of any kind, express or
+                    implied. Under no circumstances shall the authors or developers be liable for any direct or
+                    indirect loss, damages, or discrepancies resulting from the use of this software.
+                  </Text>
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.legalCloseBtn}
+                onPress={() => setShowLegalModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.legalCloseBtnText}>I Understand</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       {showSavingsModal && (
         <SavingsHistoryModal
@@ -473,6 +568,126 @@ const styles = StyleSheet.create({
   testNotificationText: {
     color: THEME.colors.pillDark,
     fontSize: 13,
+    fontWeight: '800',
+  },
+  legalButton: {
+    alignItems: 'center',
+    backgroundColor: THEME.colors.white,
+    borderColor: '#E2E8F0',
+    borderRadius: THEME.radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  legalButtonLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  legalIconCircle: {
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    borderRadius: 12,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  legalButtonTitle: {
+    color: THEME.colors.textDark,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  legalButtonSubtitle: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  legalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  legalSheet: {
+    backgroundColor: THEME.colors.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '80%',
+    padding: 24,
+    width: '100%',
+  },
+  legalHandle: {
+    alignSelf: 'center',
+    backgroundColor: '#CBD5E1',
+    borderRadius: 3,
+    height: 5,
+    marginBottom: 16,
+    width: 44,
+  },
+  legalHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  legalBadgeIcon: {
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    borderRadius: 20,
+    height: 48,
+    justifyContent: 'center',
+    marginBottom: 10,
+    width: 48,
+  },
+  legalModalTitle: {
+    color: THEME.colors.textDark,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  legalModalSub: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  legalScroll: {
+    marginVertical: 10,
+  },
+  legalCard: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 14,
+  },
+  legalCardHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  legalCardTitle: {
+    color: THEME.colors.textDark,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  legalCardBody: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  legalCloseBtn: {
+    alignItems: 'center',
+    backgroundColor: THEME.colors.pillDark,
+    borderRadius: THEME.radius.full,
+    marginTop: 8,
+    paddingVertical: 14,
+  },
+  legalCloseBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '800',
   },
 });
