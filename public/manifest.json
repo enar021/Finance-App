@@ -1,0 +1,30 @@
+{
+  "short_name": "Penny Wise",
+  "name": "Penny Wise - Monthly Allowance Tracker",
+  "description": "Smart monthly allowance tracker and compounding savings vault.",
+  "icons": [
+    {
+      "src": "/Finance-App/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/Finance-App/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/Finance-App/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/Finance-App/",
+  "scope": "/Finance-App/",
+  "background_color": "#EDF6F2",
+  "theme_color": "#EDF6F2",
+  "display": "standalone",
+  "orientation": "portrait"
+}

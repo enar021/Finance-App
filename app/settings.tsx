@@ -196,7 +196,14 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: THEME.colors.background },
   flex: { flex: 1 },
-  content: { gap: 18, padding: 20, paddingBottom: 48 },
+  content: {
+    gap: 18,
+    padding: 20,
+    paddingBottom: 48,
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
+  },
   eyebrow: { color: THEME.colors.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1 },
   title: {
     color: THEME.colors.textDark,

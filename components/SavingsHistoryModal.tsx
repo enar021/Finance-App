@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -69,9 +70,11 @@ export default function SavingsHistoryModal({
   }, [history, initialBalance]);
 
   // Graph geometry
-  const graphWidth = 320;
+  const { width: windowWidth } = useWindowDimensions();
+  const maxContentWidth = Math.min(windowWidth - 40, 480);
+  const graphWidth = Math.max(220, maxContentWidth - 40);
   const graphHeight = 150;
-  const padX = 28;
+  const padX = 24;
   const padY = 24;
 
   const { pathLine, pathArea, pointCoords } = useMemo(() => {
@@ -148,7 +151,9 @@ export default function SavingsHistoryModal({
             </View>
 
             <Text style={styles.vaultLabel}>TOTAL SAVINGS BALANCE</Text>
-            <Text style={styles.vaultAmount}>₱ {formatCurrency(totalSavings)}</Text>
+            <Text style={styles.vaultAmount} numberOfLines={1} adjustsFontSizeToFit>
+              ₱ {formatCurrency(totalSavings)}
+            </Text>
 
             <View style={styles.vaultFooter}>
               <View style={styles.vaultStat}>
@@ -353,6 +358,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 12,
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
   },
   closeBtn: {
     alignItems: 'center',
@@ -368,7 +376,14 @@ const styles = StyleSheet.create({
   navTitleGroup: { alignItems: 'center' },
   navTitle: { color: THEME.colors.textDark, fontSize: 17, fontWeight: '800' },
   navSubtitle: { color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+    gap: 16,
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
+  },
   vaultCard: {
     backgroundColor: THEME.colors.mintCard,
     borderColor: 'rgba(255, 255, 255, 0.7)',

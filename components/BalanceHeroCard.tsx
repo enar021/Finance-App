@@ -48,7 +48,11 @@ export default function BalanceHeroCard({
 
       <Text style={styles.remainingLabel}>REMAINING</Text>
 
-      <Text style={[styles.amount, isOverBudget && styles.overBudgetAmount]}>
+      <Text
+        style={[styles.amount, isOverBudget && styles.overBudgetAmount]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
         {isOverBudget ? '-₱ ' : '₱ '}
         {formatCurrency(Math.abs(currentRemaining))}
       </Text>

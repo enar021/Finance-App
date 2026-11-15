@@ -171,7 +171,7 @@ export default function Dashboard() {
   const isDraggingRef = useRef(false);
   const scrollX = useRef(new Animated.Value(0)).current;
   const { width: screenWidth } = useWindowDimensions();
-  const dayCardWidth = screenWidth - 40;
+  const dayCardWidth = Math.min(screenWidth - 40, 480);
 
   const baseAllowance = stats.baseAllowance;
   const currentRemaining = stats.currentRemaining;
@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  content: { gap: 20, padding: 20, paddingBottom: 40 },
+  content: { gap: 20, padding: 20, paddingBottom: 40, maxWidth: 520, width: '100%', alignSelf: 'center' },
   dayNavRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   dayNavTitleGroup: { flex: 1, marginRight: 12 },
   weekLabel: { color: THEME.colors.textDark, fontSize: 25, fontWeight: '800' },

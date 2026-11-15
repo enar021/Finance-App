@@ -175,9 +175,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
     flex: 1,
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   keyboardAvoid: {
     width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   sheet: {
     backgroundColor: THEME.colors.white,
@@ -185,6 +188,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     padding: 24,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   handle: {
     alignSelf: 'center',

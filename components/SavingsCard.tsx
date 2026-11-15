@@ -36,7 +36,7 @@ export default function SavingsCard({ bankName, totalSavings, onPress }: Savings
 
       {/* Bottom Amount Row with Circle Arrow Button from Inspo */}
       <View style={styles.amountRow}>
-        <Text style={styles.amount}>
+        <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
           ₱ {formatCurrency(totalSavings)}
         </Text>
 
@@ -102,6 +102,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   amount: {
+    flex: 1,
+    marginRight: 12,
     fontSize: 38,
     fontWeight: '800',
     color: THEME.colors.textDark,

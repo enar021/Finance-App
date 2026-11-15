@@ -226,7 +226,11 @@ export default function HistoryScreen() {
         </View>
 
         {/* Filter Pills */}
-        <View style={styles.filterBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterBar}
+        >
           <TouchableOpacity
             style={[
               styles.filterPill,
@@ -298,7 +302,7 @@ export default function HistoryScreen() {
               Custom
             </Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
         {/* Custom filter indicator banner */}
         {filterType === "custom" && (
@@ -670,7 +674,14 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: THEME.colors.background },
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+    gap: 16,
+    maxWidth: 520,
+    width: "100%",
+    alignSelf: "center",
+  },
   header: { marginTop: 4 },
   eyebrow: {
     color: THEME.colors.textMuted,
@@ -969,6 +980,8 @@ const styles = StyleSheet.create({
     maxHeight: "65%",
     padding: 24,
     width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
   },
   modalHandle: {
     alignSelf: "center",

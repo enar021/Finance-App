@@ -241,7 +241,9 @@ export default function SpendingPieChart({
             {totalAmount === 0 ? (
               <View style={styles.centerTextGroup}>
                 <Text style={styles.centerSub}>NO EXPENSES</Text>
-                <Text style={styles.centerAmount}>₱ 0</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={styles.centerAmount}>
+                  ₱ 0
+                </Text>
                 <Text style={styles.centerHint}>100% budget intact</Text>
               </View>
             ) : selectedSegment ? (
@@ -250,7 +252,9 @@ export default function SpendingPieChart({
                 <Text numberOfLines={1} style={styles.centerCategory}>
                   {selectedSegment.label}
                 </Text>
-                <Text style={styles.centerAmount}>₱ {formatCurrency(selectedSegment.amount)}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={styles.centerAmount}>
+                  ₱ {formatCurrency(selectedSegment.amount)}
+                </Text>
                 <Text style={styles.centerPercentage}>
                   {selectedSegment.percentage.toFixed(1)}% of spent
                 </Text>
@@ -258,7 +262,9 @@ export default function SpendingPieChart({
             ) : (
               <View style={styles.centerTextGroup}>
                 <Text style={styles.centerSub}>TOTAL SPENT</Text>
-                <Text style={styles.centerAmount}>₱ {formatCurrency(totalAmount)}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={styles.centerAmount}>
+                  ₱ {formatCurrency(totalAmount)}
+                </Text>
                 {allowance !== null && allowance > 0 && (
                   <Text style={styles.centerHint}>
                     {((totalAmount / allowance) * 100).toFixed(0)}% of allowance
