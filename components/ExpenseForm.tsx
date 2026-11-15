@@ -171,7 +171,6 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    alignItems: 'center',
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   sheetContainer: {
@@ -186,9 +185,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 10,
-    maxWidth: 520,
     width: '100%',
-    alignSelf: 'center',
   },
   dragHandle: {
     width: 44,

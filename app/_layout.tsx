@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, View, useWindowDimensions } from 'react-native';
+import { AppState, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -19,10 +19,6 @@ export default function RootLayout() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
   const insets = useSafeAreaInsets();
   const bottomPadding = insets.bottom > 0 ? insets.bottom + 4 : 12;
-
-  const { width: windowWidth } = useWindowDimensions();
-  const isLargeScreen = windowWidth > 580;
-  const maxContentWidth = 520;
 
   const [isAnimationFinished, setIsAnimationFinished] = useState(false);
 
@@ -69,17 +65,6 @@ export default function RootLayout() {
             shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.04,
             shadowRadius: 8,
-            maxWidth: maxContentWidth,
-            width: '100%',
-            alignSelf: 'center',
-            left: isLargeScreen ? (windowWidth - maxContentWidth) / 2 : 0,
-            right: isLargeScreen ? (windowWidth - maxContentWidth) / 2 : 0,
-            borderRadius: isLargeScreen ? 20 : 0,
-            marginBottom: isLargeScreen ? 12 : 0,
-            borderLeftWidth: isLargeScreen ? 1 : 0,
-            borderRightWidth: isLargeScreen ? 1 : 0,
-            borderLeftColor: '#E2E8F0',
-            borderRightColor: '#E2E8F0',
           },
           tabBarActiveTintColor: THEME.colors.pillDark,
           tabBarInactiveTintColor: THEME.colors.textMuted,

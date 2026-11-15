@@ -678,9 +678,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
     gap: 16,
-    maxWidth: 520,
-    width: "100%",
-    alignSelf: "center",
   },
   header: { marginTop: 4 },
   eyebrow: {
@@ -968,7 +965,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   modalOverlay: {
-    alignItems: "center",
     backgroundColor: "rgba(15, 23, 42, 0.45)",
     flex: 1,
     justifyContent: "flex-end",
@@ -980,8 +976,6 @@ const styles = StyleSheet.create({
     maxHeight: "65%",
     padding: 24,
     width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
   },
   modalHandle: {
     alignSelf: "center",

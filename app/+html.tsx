@@ -1,5 +1,5 @@
 import React, { type PropsWithChildren } from 'react';
-import { useServerDocumentContext } from 'expo-router/html';
+import { ScrollViewStyleReset, useServerDocumentContext } from 'expo-router/html';
 
 /**
  * Root HTML shell for Expo Router static web export.
@@ -18,6 +18,9 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
 
+        {/* Style reset for full-screen React Native web apps using <ScrollView /> */}
+        <ScrollViewStyleReset />
+
         {/* PWA / Homescreen Metadata */}
         <title>Penny Wise</title>
         <meta name="application-name" content="Penny Wise" />
@@ -35,22 +38,19 @@ export default function Root({ children }: PropsWithChildren) {
         <style
           dangerouslySetInnerHTML={{
             __html: `
-              html, body {
-                background-color: #EDF6F2;
+              html, body, #root {
+                height: 100%;
+                width: 100%;
                 margin: 0;
                 padding: 0;
+                background-color: #EDF6F2;
+                -webkit-text-size-adjust: 100%;
+                touch-action: manipulation;
               }
-              /* Desktop and tablet scrollbar polish */
-              ::-webkit-scrollbar {
-                width: 6px;
-                height: 6px;
-              }
-              ::-webkit-scrollbar-track {
-                background: transparent;
-              }
-              ::-webkit-scrollbar-thumb {
-                background: rgba(15, 23, 42, 0.15);
-                border-radius: 9999px;
+              #root {
+                display: flex;
+                flex-direction: column;
+                min-height: 100%;
               }
             `,
           }}

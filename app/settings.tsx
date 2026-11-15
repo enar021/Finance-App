@@ -200,9 +200,6 @@ const styles = StyleSheet.create({
     gap: 18,
     padding: 20,
     paddingBottom: 48,
-    maxWidth: 520,
-    width: '100%',
-    alignSelf: 'center',
   },
   eyebrow: { color: THEME.colors.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 1 },
   title: {

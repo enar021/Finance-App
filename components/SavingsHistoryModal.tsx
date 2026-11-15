@@ -358,9 +358,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    maxWidth: 520,
-    width: '100%',
-    alignSelf: 'center',
   },
   closeBtn: {
     alignItems: 'center',
@@ -380,9 +377,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
     gap: 16,
-    maxWidth: 520,
-    width: '100%',
-    alignSelf: 'center',
   },
   vaultCard: {
     backgroundColor: THEME.colors.mintCard,
