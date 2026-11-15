@@ -39,7 +39,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "baseUrl": "/penny-wise"
+      "baseUrl": "/Finance-App"
     }
   }
 }
