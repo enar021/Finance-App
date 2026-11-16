@@ -14,6 +14,7 @@ import * as Crypto from 'expo-crypto';
 const STATS_KEY = '@pocketledger_stats_v2';
 const EXPENSES_KEY = '@pocketledger_expenses_v2';
 const SAVINGS_HISTORY_KEY = '@pocketledger_savings_history_v2';
+const TERMS_KEY = '@pennywise_terms_accepted_v1';
 
 const DEFAULT_STATS: UserStats = {
   bankName: '',
@@ -142,13 +143,15 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   expenses: [],
   savingsHistory: [],
   isLoaded: false,
+  hasAcceptedTerms: false,
 
   loadData: async () => {
     try {
-      const [statsRaw, expensesRaw, savingsHistoryRaw] = await Promise.all([
+      const [statsRaw, expensesRaw, savingsHistoryRaw, termsRaw] = await Promise.all([
         AsyncStorage.getItem(STATS_KEY),
         AsyncStorage.getItem(EXPENSES_KEY),
         AsyncStorage.getItem(SAVINGS_HISTORY_KEY),
+        AsyncStorage.getItem(TERMS_KEY),
       ]);
 
       const storedStats = statsRaw ? JSON.parse(statsRaw) : null;
@@ -187,11 +190,20 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         stats.currentRemaining = calculateRemaining(stats, expenses);
       }
 
-      set({ stats, expenses, savingsHistory, isLoaded: true });
+      const hasAcceptedTerms = termsRaw === 'true' || Boolean(storedStats?.bankName);
+
+      set({ stats, expenses, savingsHistory, hasAcceptedTerms, isLoaded: true });
     } catch (error) {
       console.error('Failed to load local data:', error);
-      set({ stats: DEFAULT_STATS, expenses: [], savingsHistory: [], isLoaded: true });
+      set({ stats: DEFAULT_STATS, expenses: [], savingsHistory: [], hasAcceptedTerms: false, isLoaded: true });
     }
+  },
+
+  acceptTerms: () => {
+    set({ hasAcceptedTerms: true });
+    AsyncStorage.setItem(TERMS_KEY, 'true').catch((err) => {
+      console.error('Failed to save terms acceptance:', err);
+    });
   },
 
   checkAndAdvanceMonth: () => {
@@ -353,8 +365,9 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         AsyncStorage.removeItem(STATS_KEY),
         AsyncStorage.removeItem(EXPENSES_KEY),
         AsyncStorage.removeItem(SAVINGS_HISTORY_KEY),
+        AsyncStorage.removeItem(TERMS_KEY),
       ]);
-      set({ stats: DEFAULT_STATS, expenses: [], savingsHistory: [], isLoaded: true });
+      set({ stats: DEFAULT_STATS, expenses: [], savingsHistory: [], hasAcceptedTerms: false, isLoaded: true });
     } catch (e) {
       console.error(e);
     }

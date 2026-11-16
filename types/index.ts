@@ -35,9 +35,11 @@ export interface FinanceState {
   expenses: Expense[];
   savingsHistory: SavingsRecord[];
   isLoaded: boolean;
+  hasAcceptedTerms: boolean;
 
   // Actions
   loadData: () => Promise<void>;
+  acceptTerms: () => void;
   checkAndAdvanceMonth: () => boolean;
   saveSettings: (bankName: string, allowance: number, savingsBalance: number) => void;
   addMoney: (amount: number, note?: string) => { ok: boolean; message?: string };

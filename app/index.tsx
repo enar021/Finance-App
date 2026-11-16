@@ -152,8 +152,17 @@ function WheelPagination({
 }
 
 export default function Dashboard() {
-  const { stats, expenses, savingsHistory, addExpense, addMoney, deleteExpense, isLoaded, checkAndAdvanceMonth } =
-    useFinanceStore();
+  const {
+    stats,
+    expenses,
+    savingsHistory,
+    addExpense,
+    addMoney,
+    deleteExpense,
+    isLoaded,
+    checkAndAdvanceMonth,
+    hasAcceptedTerms,
+  } = useFinanceStore();
   const [view, setView] = useState<DashboardView>('day');
 
   // Verify and auto-advance month when user focuses on the ledger screen
@@ -273,7 +282,10 @@ export default function Dashboard() {
             </Text>
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={() => router.push('/settings')}
+              onPress={() => {
+                if (!hasAcceptedTerms) return;
+                router.push('/settings');
+              }}
               activeOpacity={0.8}
             >
               <Text style={styles.primaryButtonText}>Set up budget</Text>

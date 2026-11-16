@@ -8,6 +8,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { useFinanceStore } from '@/store/useFinanceStore';
 import { THEME } from '@/constants/theme';
 import { StartupAnimation } from '@/components/StartupAnimation';
+import TermsAgreementModal from '@/components/TermsAgreementModal';
 import { checkAndTriggerScheduledReminders } from '@/utils/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -18,6 +19,8 @@ function RootTabs() {
   const loadData = useFinanceStore((s) => s.loadData);
   const checkAndAdvanceMonth = useFinanceStore((s) => s.checkAndAdvanceMonth);
   const isLoaded = useFinanceStore((s) => s.isLoaded);
+  const hasAcceptedTerms = useFinanceStore((s) => s.hasAcceptedTerms);
+  const acceptTerms = useFinanceStore((s) => s.acceptTerms);
   const insets = useSafeAreaInsets();
 
   // Mobile responsiveness:
@@ -121,6 +124,14 @@ function RootTabs() {
         <StartupAnimation
           isReady={isLoaded}
           onFinish={() => setIsAnimationFinished(true)}
+        />
+      )}
+
+      {/* Mandatory first-launch Privacy & Legal Terms Agreement */}
+      {isLoaded && isAnimationFinished && !hasAcceptedTerms && (
+        <TermsAgreementModal
+          visible
+          onAccept={acceptTerms}
         />
       )}
     </View>

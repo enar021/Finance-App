@@ -37,7 +37,8 @@ function parseMoney(value: string): number | null {
 }
 
 export default function SettingsScreen() {
-  const { stats, savingsHistory, saveSettings, endMonth, resetAllData } = useFinanceStore();
+  const { stats, savingsHistory, saveSettings, endMonth, resetAllData, hasAcceptedTerms, acceptTerms } =
+    useFinanceStore();
   const [bankName, setBankName] = useState(stats.bankName);
   const [allowanceInput, setAllowanceInput] = useState(
     stats.baseAllowance === null ? '' : stats.baseAllowance.toString()
@@ -101,6 +102,15 @@ export default function SettingsScreen() {
   );
 
   const handleSave = () => {
+    if (!hasAcceptedTerms) {
+      Alert.alert(
+        'Agreement Required',
+        'Please review and agree to our Privacy Notice & Disclaimers before setting up your budget.'
+      );
+      setShowLegalModal(true);
+      return;
+    }
+
     const allowance = parseMoney(allowanceInput);
     const savingsBalance = parseMoney(savingsInput);
     if (!bankName.trim()) {
@@ -386,10 +396,13 @@ export default function SettingsScreen() {
 
               <TouchableOpacity
                 style={styles.legalCloseBtn}
-                onPress={() => setShowLegalModal(false)}
+                onPress={() => {
+                  acceptTerms();
+                  setShowLegalModal(false);
+                }}
                 activeOpacity={0.8}
               >
-                <Text style={styles.legalCloseBtnText}>I Understand</Text>
+                <Text style={styles.legalCloseBtnText}>I Agree & Understand</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
