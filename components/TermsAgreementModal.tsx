@@ -89,12 +89,10 @@ export default function TermsAgreementModal({
                 <View style={[styles.badgeIcon, styles.termsBadge]}>
                   <Ionicons name="document-text" size={17} color="#4F46E5" />
                 </View>
-                <Text style={styles.cardTitle}>Terms & &ldquo;As Is&rdquo; Provision</Text>
+                <Text style={styles.cardTitle}>{'Terms & \u201CAs Is\u201D Provision'}</Text>
               </View>
               <Text style={styles.cardText}>
-                This application is provided &ldquo;as is&rdquo;, without warranty of any kind, express
-                or implied. In no event shall the authors or developers be liable for any direct or
-                indirect damages, loss, or financial discrepancies resulting from the use of this software.
+                {'This application is provided \u201Cas is\u201D, without warranty of any kind, express or implied. In no event shall the authors or developers be liable for any direct or indirect damages, loss, or financial discrepancies resulting from the use of this software.'}
               </Text>
             </View>
           </ScrollView>
@@ -176,7 +174,7 @@ const styles = StyleSheet.create({
     borderRadius: THEME.radius.lg,
     borderWidth: 1,
     padding: 16,
-    ...THEME.shadow.card,
+    ...THEME.shadow.soft,
   },
   cardHeader: {
     alignItems: 'center',
