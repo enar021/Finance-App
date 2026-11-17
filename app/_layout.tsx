@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, Platform, View } from 'react-native';
+import { AppState, Platform, useWindowDimensions, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -22,9 +22,11 @@ function RootTabs() {
   const hasAcceptedTerms = useFinanceStore((s) => s.hasAcceptedTerms);
   const acceptTerms = useFinanceStore((s) => s.acceptTerms);
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
 
   const isWeb = Platform.OS === 'web';
-  const bottomPadding = Math.max(insets.bottom, isWeb ? 26 : 12);
+  const isPhoneWeb = isWeb && width <= 430;
+  const bottomPadding = Math.max(insets.bottom, isPhoneWeb ? 8 : isWeb ? 26 : 12);
   const tabHeight = 58 + bottomPadding;
 
   const [isAnimationFinished, setIsAnimationFinished] = useState(false);

@@ -714,8 +714,10 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         hasAcceptedTerms: false,
         isLoaded: true,
       });
+      return true;
     } catch (e) {
-      console.error(e);
+      console.error('Failed to clear saved finance data:', e);
+      return false;
     }
   },
 

@@ -72,6 +72,6 @@ export interface FinanceState {
   cancelSubscription: (id: string) => void;
   deleteExpense: (id: string) => void;
   endMonth: () => void;
-  resetAllData: () => Promise<void>;
+  resetAllData: () => Promise<boolean>;
   getMonthExpenses: (monthLabel?: string) => Expense[];
 }

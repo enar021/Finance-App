@@ -53,7 +53,12 @@ export default function NotificationSettingsScreen() {
     const result = await sendTestReminder();
     setPermission(result.status);
     if (result.ok) {
-      Alert.alert('Test sent', 'Check your notification banner.');
+      Alert.alert(
+        'Test sent',
+        Platform.OS === 'web'
+          ? 'The browser accepted the notification. Your browser and device settings control whether web notifications show as banners or play a sound.'
+          : 'Check your notification banner.'
+      );
     } else if (result.status === 'denied') {
       Alert.alert('Permission blocked', 'Allow notifications in your device or browser settings.');
     } else if (result.status === 'unsupported') {
@@ -103,6 +108,13 @@ export default function NotificationSettingsScreen() {
             <Ionicons name="paper-plane-outline" size={16} color={THEME.colors.pillDark} />
             <Text style={styles.testText}>Send test reminder</Text>
           </TouchableOpacity>
+          {Platform.OS === 'web' && (
+            <Text style={styles.webNotificationNote}>
+              On iPhone, add Penny Wise to the Home Screen, then enable Banners and Sounds in
+              Settings {'>'} Notifications {'>'} Penny Wise. Focus or Scheduled Summary may silence
+              or delay alerts.
+            </Text>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -156,4 +168,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   testText: { color: THEME.colors.pillDark, fontSize: 13, fontWeight: '800' },
+  webNotificationNote: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: THEME.radius.md,
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 12,
+    padding: 12,
+  },
 });
