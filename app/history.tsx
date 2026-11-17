@@ -38,8 +38,12 @@ const PALETTE = [
   "#E879F9", // Fuchsia
 ];
 
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export default function HistoryScreen() {
-  const { expenses, stats } = useFinanceStore();
+  const { expenses, stats, savingsHistory, checkAndAdvanceMonth } = useFinanceStore();
   const [filterType, setFilterType] = useState<FilterType>("current");
   const [customMonth, setCustomMonth] = useState<string>("all");
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -49,22 +53,34 @@ export default function HistoryScreen() {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [animKey, setAnimKey] = useState<number>(0);
 
-  // 100% Native Driver animations for zero-lag 120 FPS transitions
   const cardEntranceAnim = useRef(new Animated.Value(0)).current;
   const badgeScaleAnim = useRef(new Animated.Value(0.9)).current;
   const utilizationProgressAnim = useRef(new Animated.Value(0)).current;
 
-  // Retrigger animations every time screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      checkAndAdvanceMonth();
       setAnimKey((k) => k + 1);
-    }, []),
+    }, [checkAndAdvanceMonth]),
   );
 
   const currentMonthLabel = stats.currentMonthLabel || getMonthLabel();
   const previousMonthLabel = getPreviousMonthLabel(currentMonthLabel);
 
-  // Collect all unique month labels present across expenses & current stats
+  const historicalBudgetByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    savingsHistory.forEach((record) => {
+      if (
+        record.monthLabel &&
+        typeof record.budget === "number" &&
+        Number.isFinite(record.budget)
+      ) {
+        map.set(record.monthLabel, record.budget);
+      }
+    });
+    return map;
+  }, [savingsHistory]);
+
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
     set.add(currentMonthLabel);
@@ -72,17 +88,18 @@ export default function HistoryScreen() {
     expenses.forEach((e) => {
       if (e.monthLabel) set.add(e.monthLabel);
     });
+    savingsHistory.forEach((rec) => {
+      if (rec.monthLabel) set.add(rec.monthLabel);
+    });
     return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [expenses, currentMonthLabel, previousMonthLabel]);
+  }, [expenses, savingsHistory, currentMonthLabel, previousMonthLabel]);
 
-  // Determine active month label based on filter
   const activeMonthLabel = useMemo(() => {
     if (filterType === "current") return currentMonthLabel;
     if (filterType === "previous") return previousMonthLabel;
-    return customMonth; // could be specific "YYYY-MM" or "all"
+    return customMonth;
   }, [filterType, currentMonthLabel, previousMonthLabel, customMonth]);
 
-  // Filter expenses matching the active filter
   const filteredExpenses = useMemo(() => {
     if (filterType === "current") {
       return expenses.filter((e) => e.monthLabel === currentMonthLabel);
@@ -90,7 +107,6 @@ export default function HistoryScreen() {
     if (filterType === "previous") {
       return expenses.filter((e) => e.monthLabel === previousMonthLabel);
     }
-    // Custom filter
     if (customMonth === "all") {
       return expenses;
     }
@@ -103,36 +119,92 @@ export default function HistoryScreen() {
     customMonth,
   ]);
 
-  // Calculate totals
   const totalSpent = useMemo(
-    () => filteredExpenses.reduce((sum, e) => sum + e.amount, 0),
+    () => roundMoney(filteredExpenses.reduce((sum, e) => sum + e.amount, 0)),
     [filteredExpenses],
   );
 
-  const baseAllowance = stats.baseAllowance ?? 0;
-  // Allowance for the period: if single month, baseAllowance + extra; if all-time, baseAllowance * count
   const periodAllowance = useMemo(() => {
-    if (baseAllowance === 0) return null;
-    if (filterType === 'custom' && customMonth === 'all') {
-      const monthCount = Math.max(1, availableMonths.length);
-      return baseAllowance * monthCount + (stats.extraAllowance ?? 0);
+    const currentBase = stats.baseAllowance;
+    const currentOpenBudget =
+      currentBase !== null
+        ? roundMoney(currentBase + (stats.extraAllowance ?? 0))
+        : null;
+
+    if (filterType === "custom" && customMonth === "all") {
+      let total = 0;
+      let hasAnyBudget = false;
+      const countedMonths = new Set<string>();
+
+      // 1. Sum exact recorded budgets from completed rollover history
+      historicalBudgetByMonth.forEach((budget, month) => {
+        total += budget;
+        countedMonths.add(month);
+        hasAnyBudget = true;
+      });
+
+      // 2. Add the active open month's budget if not already closed into savingsHistory
+      if (!countedMonths.has(currentMonthLabel) && currentOpenBudget !== null) {
+        total += currentOpenBudget;
+        countedMonths.add(currentMonthLabel);
+        hasAnyBudget = true;
+      }
+
+      // 3. Fallback to current baseAllowance for any unrecorded past month that has logged expenses
+      if (currentBase !== null) {
+        const unrecordedExpenseMonths = new Set<string>();
+        expenses.forEach((e) => {
+          if (e.monthLabel && !countedMonths.has(e.monthLabel)) {
+            unrecordedExpenseMonths.add(e.monthLabel);
+          }
+        });
+        if (unrecordedExpenseMonths.size > 0) {
+          total += currentBase * unrecordedExpenseMonths.size;
+          hasAnyBudget = true;
+        }
+      }
+
+      return hasAnyBudget ? roundMoney(total) : null;
     }
-    if (filterType === 'current') {
-      return baseAllowance + (stats.extraAllowance ?? 0);
+
+    const targetMonth =
+      filterType === "current"
+        ? currentMonthLabel
+        : filterType === "previous"
+          ? previousMonthLabel
+          : customMonth;
+
+    if (targetMonth === currentMonthLabel) {
+      if (historicalBudgetByMonth.has(targetMonth)) {
+        return historicalBudgetByMonth.get(targetMonth)!;
+      }
+      return currentOpenBudget;
     }
-    return baseAllowance;
-  }, [baseAllowance, filterType, customMonth, availableMonths.length, stats.extraAllowance]);
+
+    if (historicalBudgetByMonth.has(targetMonth)) {
+      return historicalBudgetByMonth.get(targetMonth)!;
+    }
+
+    return currentBase;
+  }, [
+    stats.baseAllowance,
+    stats.extraAllowance,
+    filterType,
+    customMonth,
+    currentMonthLabel,
+    previousMonthLabel,
+    historicalBudgetByMonth,
+    expenses,
+  ]);
 
   const remainingAllowance =
-    periodAllowance !== null ? periodAllowance - totalSpent : null;
+    periodAllowance !== null ? roundMoney(periodAllowance - totalSpent) : null;
   const spentPercentage =
-    periodAllowance && periodAllowance > 0
+    periodAllowance !== null && periodAllowance > 0
       ? Math.min(100, Math.round((totalSpent / periodAllowance) * 100))
       : 0;
 
-  // Trigger smooth, graceful animations whenever screen focuses or month changes
   useEffect(() => {
-    // 1. Budget utilization smooth fill-up animation (900ms)
     utilizationProgressAnim.setValue(0);
     Animated.timing(utilizationProgressAnim, {
       toValue: spentPercentage,
@@ -141,7 +213,6 @@ export default function HistoryScreen() {
       useNativeDriver: false,
     }).start();
 
-    // 2. Card entrance & badge scale
     cardEntranceAnim.setValue(0);
     badgeScaleAnim.setValue(0.9);
 
@@ -159,9 +230,8 @@ export default function HistoryScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [animKey, activeMonthLabel, spentPercentage]);
+  }, [animKey, activeMonthLabel, spentPercentage, badgeScaleAnim, cardEntranceAnim, utilizationProgressAnim]);
 
-  // Group expenses by title / category for the pie chart
   const segments: ChartSegment[] = useMemo(() => {
     if (filteredExpenses.length === 0 || totalSpent === 0) return [];
 
@@ -197,14 +267,13 @@ export default function HistoryScreen() {
     }));
   }, [filteredExpenses, totalSpent]);
 
-  // Expenses for the currently expanded or selected category
   const activeCategoryExpenses = useMemo(() => {
-    const key = expandedCategory || selectedCategoryKey;
-    if (!key) return [];
-    return filteredExpenses.filter((e) => e.title.trim().toLowerCase() === key);
-  }, [filteredExpenses, expandedCategory, selectedCategoryKey]);
+    if (!expandedCategory) return [];
+    return filteredExpenses
+      .filter((e) => e.title.trim().toLowerCase() === expandedCategory)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredExpenses, expandedCategory]);
 
-  // Human readable label for current filter
   const filterDescription = useMemo(() => {
     if (filterType === "current") return formatMonthLabel(currentMonthLabel);
     if (filterType === "previous") return formatMonthLabel(previousMonthLabel);
@@ -218,14 +287,12 @@ export default function HistoryScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.eyebrow}>ALLOWANCE DISTRIBUTION</Text>
           <Text style={styles.title}>Spending Statistics</Text>
           <Text style={styles.subtitle}>{filterDescription}</Text>
         </View>
 
-        {/* Filter Pills */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -304,7 +371,6 @@ export default function HistoryScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Custom filter indicator banner */}
         {filterType === "custom" && (
           <TouchableOpacity
             style={styles.customBanner}
@@ -326,7 +392,6 @@ export default function HistoryScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Allowance Utilization Card */}
         {periodAllowance !== null && (
           <Animated.View
             style={[
@@ -345,9 +410,9 @@ export default function HistoryScreen() {
             ]}
           >
             <View style={styles.utilizationHeader}>
-              <View>
+              <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.utilizationLabel}>BUDGET UTILIZATION</Text>
-                <Text style={styles.utilizationSpent}>
+                <Text style={styles.utilizationSpent} numberOfLines={1} adjustsFontSizeToFit>
                   ₱ {formatCurrency(totalSpent)}{" "}
                   <Text style={styles.utilizationTotal}>
                     / ₱ {formatCurrency(periodAllowance)}
@@ -366,7 +431,6 @@ export default function HistoryScreen() {
               </Animated.View>
             </View>
 
-            {/* Two-tone Animated Progress Bar */}
             <View style={styles.progressBarTrack}>
               <Animated.View
                 style={[
@@ -395,7 +459,6 @@ export default function HistoryScreen() {
           </Animated.View>
         )}
 
-        {/* Pie Graph Card */}
         <Animated.View
           style={[
             styles.chartCard,
@@ -449,7 +512,6 @@ export default function HistoryScreen() {
           )}
         </Animated.View>
 
-        {/* Category Breakdown List */}
         {segments.length > 0 && (
           <View style={styles.breakdownSection}>
             <Text style={styles.sectionHeaderTitle}>BREAKDOWN BY CATEGORY</Text>
@@ -471,9 +533,9 @@ export default function HistoryScreen() {
                       style={styles.categoryCardMain}
                       activeOpacity={0.7}
                       onPress={() => {
-                        const next = isSelected ? null : seg.key;
+                        const next = isExpanded ? null : seg.key;
                         setSelectedCategoryKey(next);
-                        setExpandedCategory(isExpanded ? null : seg.key);
+                        setExpandedCategory(next);
                       }}
                     >
                       <View
@@ -514,7 +576,6 @@ export default function HistoryScreen() {
                       />
                     </TouchableOpacity>
 
-                    {/* Proportional Mini Bar */}
                     <View style={styles.categoryBarTrack}>
                       <View
                         style={[
@@ -527,7 +588,6 @@ export default function HistoryScreen() {
                       />
                     </View>
 
-                    {/* Expanded individual transactions in category */}
                     {isExpanded && activeCategoryExpenses.length > 0 && (
                       <View style={styles.expandedList}>
                         <Text style={styles.expandedHeading}>
@@ -555,7 +615,6 @@ export default function HistoryScreen() {
         )}
       </ScrollView>
 
-      {/* Custom Month Picker Modal */}
       <Modal
         visible={showCustomModal}
         transparent

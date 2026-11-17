@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +18,7 @@ import { formatCurrency } from '@/utils/dates';
 interface AddMoneyModalProps {
   visible: boolean;
   currentRemaining: number | null;
-  onAdd: (amount: number, note?: string) => void;
+  onAdd: (amount: number, note?: string) => boolean | Promise<boolean> | void;
   onClose: () => void;
 }
 
@@ -31,6 +32,7 @@ export default function AddMoneyModal({
 }: AddMoneyModalProps) {
   const [amountInput, setAmountInput] = useState('');
   const [note, setNote] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleQuickAdd = (value: number) => {
     const current = Number(amountInput.replace(/,/g, '')) || 0;
@@ -38,17 +40,44 @@ export default function AddMoneyModal({
     setAmountInput(next.toString());
   };
 
-  const handleSave = () => {
-    const parsed = Number(amountInput.replace(/,/g, '').trim());
+  const handleSave = async () => {
+    if (isSaving) return;
+
+    if (currentRemaining === null) {
+      Alert.alert(
+        'Set up your budget first',
+        'Configure your monthly allowance in Settings before adding money to your balance.'
+      );
+      return;
+    }
+
+    const normalized = amountInput.replace(/,/g, '').trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+      Alert.alert('Invalid amount', 'Enter a positive amount with up to two decimal places.');
+      return;
+    }
+
+    const parsed = Number(normalized);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid amount greater than ₱0.');
       return;
     }
 
-    onAdd(parsed, note.trim() || undefined);
-    setAmountInput('');
-    setNote('');
-    onClose();
+    try {
+      setIsSaving(true);
+      const result = await onAdd(parsed, note.trim() || undefined);
+      if (result === false) {
+        return;
+      }
+
+      setAmountInput('');
+      setNote('');
+      onClose();
+    } catch {
+      // Keep modal open and preserve inputs if saving throws
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const parsedAmount = Number(amountInput.replace(/,/g, '')) || 0;
@@ -75,94 +104,101 @@ export default function AddMoneyModal({
             style={styles.sheet}
             onPress={(e) => e.stopPropagation()}
           >
-            <View style={styles.handle} />
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.handle} />
 
-            <View style={styles.header}>
-              <View style={styles.headerIconSquare}>
-                <Ionicons name="add-circle-outline" size={24} color={THEME.colors.pillDark} />
+              <View style={styles.header}>
+                <View style={styles.headerIconSquare}>
+                  <Ionicons name="add-circle-outline" size={24} color={THEME.colors.pillDark} />
+                </View>
+                <View style={styles.headerTextGroup}>
+                  <Text style={styles.title}>Add to Balance</Text>
+                  <Text style={styles.subtitle}>
+                    Add extra cash, bonuses, or gifts to your current remaining funds.
+                  </Text>
+                </View>
               </View>
-              <View style={styles.headerTextGroup}>
-                <Text style={styles.title}>Add to Balance</Text>
-                <Text style={styles.subtitle}>
-                  Add extra cash, bonuses, or gifts to your current remaining funds.
-                </Text>
-              </View>
-            </View>
 
-            {/* Projection Preview */}
-            <View style={styles.projectionCard}>
-              <View>
-                <Text style={styles.projectionLabel}>CURRENT REMAINING</Text>
-                <Text style={styles.projectionCurrent}>
-                  ₱ {formatCurrency(currentRemaining ?? 0)}
-                </Text>
+              <View style={styles.projectionCard}>
+                <View style={styles.projectionColumn}>
+                  <Text style={styles.projectionLabel} numberOfLines={1} adjustsFontSizeToFit>
+                    CURRENT REMAINING
+                  </Text>
+                  <Text style={styles.projectionCurrent} numberOfLines={1} adjustsFontSizeToFit>
+                    ₱ {formatCurrency(currentRemaining ?? 0)}
+                  </Text>
+                </View>
+                <Ionicons name="arrow-forward" size={18} color={THEME.colors.textMuted} />
+                <View style={[styles.projectionColumn, styles.projectionColumnRight]}>
+                  <Text style={styles.projectionLabel} numberOfLines={1} adjustsFontSizeToFit>
+                    NEW REMAINING
+                  </Text>
+                  <Text style={styles.projectionNew} numberOfLines={1} adjustsFontSizeToFit>
+                    ₱ {formatCurrency(projectedRemaining)}
+                  </Text>
+                </View>
               </View>
-              <Ionicons name="arrow-forward" size={18} color={THEME.colors.textMuted} />
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.projectionLabel}>NEW REMAINING</Text>
-                <Text style={styles.projectionNew}>
-                  ₱ {formatCurrency(projectedRemaining)}
-                </Text>
-              </View>
-            </View>
 
-            {/* Amount input */}
-            <Text style={styles.inputLabel}>AMOUNT TO ADD (₱)</Text>
-            <View style={styles.amountInputRow}>
-              <Text style={styles.currencyPrefix}>₱</Text>
+              <Text style={styles.inputLabel}>AMOUNT TO ADD (₱)</Text>
+              <View style={styles.amountInputRow}>
+                <Text style={styles.currencyPrefix}>₱</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={THEME.colors.textMuted}
+                  value={amountInput}
+                  onChangeText={setAmountInput}
+                  autoFocus
+                />
+              </View>
+
+              <View style={styles.quickAddRow}>
+                {QUICK_AMOUNTS.map((val) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={styles.quickChip}
+                    onPress={() => handleQuickAdd(val)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.quickChipText}>+₱{val.toLocaleString('en-PH')}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>SOURCE / NOTE (OPTIONAL)</Text>
               <TextInput
-                style={styles.amountInput}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
+                style={styles.noteInput}
+                placeholder="e.g. Cash gift, freelance, refund"
                 placeholderTextColor={THEME.colors.textMuted}
-                value={amountInput}
-                onChangeText={setAmountInput}
-                autoFocus
+                value={note}
+                onChangeText={setNote}
+                maxLength={40}
               />
-            </View>
 
-            {/* Quick add pill chips */}
-            <View style={styles.quickAddRow}>
-              {QUICK_AMOUNTS.map((val) => (
-                <TouchableOpacity
-                  key={val}
-                  style={styles.quickChip}
-                  onPress={() => handleQuickAdd(val)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.quickChipText}>+₱{val.toLocaleString('en-PH')}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              <TouchableOpacity
+                style={[styles.primaryButton, isSaving && styles.primaryButtonDisabled]}
+                onPress={handleSave}
+                disabled={isSaving}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryButtonText}>Add to remaining money</Text>
+              </TouchableOpacity>
 
-            {/* Note input */}
-            <Text style={styles.inputLabel}>SOURCE / NOTE (OPTIONAL)</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="e.g. Cash gift, freelance, refund"
-              placeholderTextColor={THEME.colors.textMuted}
-              value={note}
-              onChangeText={setNote}
-              maxLength={40}
-            />
-
-            {/* Action buttons */}
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handleSave}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
-              <Text style={styles.primaryButtonText}>Add to remaining money</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={onClose}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </TouchableOpacity>
         </KeyboardAvoidingView>
       </TouchableOpacity>
@@ -183,9 +219,14 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.white,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    maxHeight: '90%',
+    overflow: 'hidden',
     width: '100%',
+  },
+  sheetScroll: { flexShrink: 1 },
+  sheetContent: {
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
   },
   handle: {
     alignSelf: 'center',
@@ -232,9 +273,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  projectionColumn: { flex: 1, minWidth: 0 },
+  projectionColumnRight: { alignItems: 'flex-end' },
   projectionLabel: {
     color: THEME.colors.textMuted,
     fontSize: 10,
@@ -283,7 +326,7 @@ const styles = StyleSheet.create({
   },
   quickAddRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     marginBottom: 16,
   },
   quickChip: {
@@ -297,7 +340,7 @@ const styles = StyleSheet.create({
   },
   quickChipText: {
     color: THEME.colors.textDark,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   noteInput: {
@@ -318,6 +361,9 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: 'center',
     paddingVertical: 15,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.65,
   },
   primaryButtonText: {
     color: '#FFFFFF',

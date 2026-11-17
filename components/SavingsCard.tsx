@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '@/constants/theme';
 import { formatCurrency } from '@/utils/dates';
+import { isCompact, isNarrow } from '@/utils/responsive';
 
 interface SavingsCardProps {
   bankName: string;
@@ -11,37 +12,48 @@ interface SavingsCardProps {
 }
 
 export default function SavingsCard({ bankName, totalSavings, onPress }: SavingsCardProps) {
+  const { width: sw } = useWindowDimensions();
+  const narrow = isNarrow(sw);
+  const compact = isCompact(sw);
+
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, narrow && { paddingVertical: 16, paddingHorizontal: 16 }]}
       onPress={onPress}
       activeOpacity={0.85}
       disabled={!onPress}
       accessibilityRole="button"
       accessibilityLabel={`View savings growth history for ${bankName}`}
     >
-      {/* Top Header Row */}
-      <View style={styles.headerRow}>
-        <View style={styles.titleGroup}>
-          <View style={styles.iconSquare}>
-            <Ionicons name="shield-checkmark" size={18} color="#059669" />
+      <View style={[styles.headerRow, narrow && styles.headerRowNarrow]}>
+        <View style={[styles.titleGroup, { flexShrink: 1 }, narrow && { width: '100%' }]}>
+          <View style={[styles.iconSquare, narrow && { width: 30, height: 30, borderRadius: 10 }]}>
+            <Ionicons name="shield-checkmark" size={narrow ? 15 : 18} color="#059669" />
           </View>
-          <Text style={styles.bankName}>{bankName}</Text>
+          <Text
+            style={[styles.bankName, { fontSize: narrow ? 18 : compact ? 21 : 24 }]}
+            numberOfLines={narrow ? 2 : 1}
+          >
+            {bankName}
+          </Text>
         </View>
 
-        <View style={styles.savingsPill}>
-          <Text style={styles.savingsPillText}>Total Savings</Text>
+        <View style={[styles.savingsPill, narrow && { paddingHorizontal: 8, paddingVertical: 4 }]}>
+          <Text style={[styles.savingsPillText, narrow && { fontSize: 10 }]}>Total Savings</Text>
         </View>
       </View>
 
-      {/* Bottom Amount Row with Circle Arrow Button from Inspo */}
       <View style={styles.amountRow}>
-        <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
+        <Text
+          style={[styles.amount, { fontSize: narrow ? 28 : compact ? 33 : 38 }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
           ₱ {formatCurrency(totalSavings)}
         </Text>
 
-        <View style={styles.arrowCircle}>
-          <Ionicons name="arrow-forward" size={18} color={THEME.colors.textDark} />
+        <View style={[styles.arrowCircle, narrow && { width: 36, height: 36, borderRadius: 18 }]}>
+          <Ionicons name="arrow-forward" size={narrow ? 15 : 18} color={THEME.colors.textDark} />
         </View>
       </View>
     </TouchableOpacity>
@@ -64,6 +76,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  headerRowNarrow: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
+    gap: 10,
+  },
   titleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -83,6 +100,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: THEME.colors.textDark,
     letterSpacing: -0.4,
+    flexShrink: 1,
   },
   savingsPill: {
     backgroundColor: THEME.colors.white,
@@ -90,6 +108,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: THEME.radius.full,
     ...THEME.shadow.button,
+    flexShrink: 0,
+    marginLeft: 8,
   },
   savingsPillText: {
     fontSize: 12,
@@ -117,5 +137,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...THEME.shadow.button,
+    flexShrink: 0,
   },
 });

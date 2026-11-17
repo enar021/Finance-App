@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import Svg, {
   Rect,
@@ -21,32 +21,38 @@ interface PennyWiseLogoProps {
  * nestled inside a modern charcoal leather wallet with brass clasp.
  */
 export function PennyWiseLogo({ size = 64, style }: PennyWiseLogoProps) {
+  const uid = useId().replace(/:/g, '');
+  const coinGradId = `coinGrad-${uid}`;
+  const rimGradId = `rimGrad-${uid}`;
+  const walletFrontId = `walletFront-${uid}`;
+  const walletBackId = `walletBack-${uid}`;
+
   return (
     <View style={[styles.container, { width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
           {/* Gold coin gradient */}
-          <LinearGradient id="coinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <LinearGradient id={coinGradId} x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#FDE68A" />
             <Stop offset="40%" stopColor="#F59E0B" />
             <Stop offset="100%" stopColor="#D97706" />
           </LinearGradient>
 
           {/* Coin rim gradient */}
-          <LinearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <LinearGradient id={rimGradId} x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor="#FEF3C7" />
             <Stop offset="50%" stopColor="#FBBF24" />
             <Stop offset="100%" stopColor="#B45309" />
           </LinearGradient>
 
           {/* Wallet front leather gradient */}
-          <LinearGradient id="walletFront" x1="0%" y1="0%" x2="0%" y2="100%">
+          <LinearGradient id={walletFrontId} x1="0%" y1="0%" x2="0%" y2="100%">
             <Stop offset="0%" stopColor="#2A303A" />
             <Stop offset="100%" stopColor="#1A1E24" />
           </LinearGradient>
 
           {/* Wallet back interior */}
-          <LinearGradient id="walletBack" x1="0%" y1="0%" x2="0%" y2="100%">
+          <LinearGradient id={walletBackId} x1="0%" y1="0%" x2="0%" y2="100%">
             <Stop offset="0%" stopColor="#14171C" />
             <Stop offset="100%" stopColor="#1F242C" />
           </LinearGradient>
@@ -59,7 +65,7 @@ export function PennyWiseLogo({ size = 64, style }: PennyWiseLogoProps) {
           width="68"
           height="48"
           rx="12"
-          fill="url(#walletBack)"
+          fill={`url(#${walletBackId})`}
         />
 
         {/* 2. The Golden Coin nestled inside the wallet pocket */}
@@ -69,14 +75,14 @@ export function PennyWiseLogo({ size = 64, style }: PennyWiseLogoProps) {
             cx="50"
             cy="35"
             r="19"
-            fill="url(#rimGrad)"
+            fill={`url(#${rimGradId})`}
           />
           {/* Coin face */}
           <Circle
             cx="50"
             cy="35"
             r="16"
-            fill="url(#coinGrad)"
+            fill={`url(#${coinGradId})`}
           />
           {/* Inner coin ring detail */}
           <Circle
@@ -115,7 +121,7 @@ export function PennyWiseLogo({ size = 64, style }: PennyWiseLogoProps) {
         {/* 3. Wallet Front leather pocket (covers the lower half of the coin) */}
         <Path
           d="M 16 48 Q 50 54 84 48 L 84 68 A 12 12 0 0 1 72 80 L 28 80 A 12 12 0 0 1 16 68 Z"
-          fill="url(#walletFront)"
+          fill={`url(#${walletFrontId})`}
         />
 
         {/* Pocket rim highlight stitching */}

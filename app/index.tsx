@@ -32,8 +32,14 @@ import {
   getWeekNumberInMonth,
   parseDateKey,
 } from '@/utils/dates';
+import { isNarrow } from '@/utils/responsive';
 
 type DashboardView = 'day' | 'weeks';
+
+function getOpenMonthDate(monthLabel: string): string {
+  const today = getDateKey();
+  return getMonthLabel(today) === monthLabel ? today : `${monthLabel}-01`;
+}
 
 function getWeekDayKeys(dateKey: string): string[] {
   const monthLabel = getMonthLabel(dateKey);
@@ -67,10 +73,11 @@ function WheelPagination({
   dayCardWidth: number;
   onSelectIndex: (index: number) => void;
 }) {
-  // Window displays 3 dots centered inside a 56px container with 8px margins on both sides
-  // Dot width: 8, gap: 8 => step = 16
-  // 3 dots span 40px: slot 0 at 8px, slot 1 (center) at 24px, slot 2 at 40px (ends at 48px, with 8px margin before container edge)
+  // Animated.interpolate requires at least 2 points; single-day weeks need no pagination dots
+  if (total <= 1) return null;
+
   const getTargetX = (pageIndex: number) => {
+    if (total === 2) return 12; // Center 2 dots cleanly inside the 56px container
     const startIndex = Math.max(0, Math.min(pageIndex <= 1 ? 0 : pageIndex - 1, total - 3));
     return 4 - startIndex * 16;
   };
@@ -165,13 +172,15 @@ export default function Dashboard() {
   } = useFinanceStore();
   const [view, setView] = useState<DashboardView>('day');
 
-  // Verify and auto-advance month when user focuses on the ledger screen
   useFocusEffect(
     useCallback(() => {
       checkAndAdvanceMonth();
     }, [checkAndAdvanceMonth])
   );
-  const [selectedDate, setSelectedDate] = useState(getDateKey());
+
+  const [selectedDate, setSelectedDate] = useState(() =>
+    getOpenMonthDate(stats.currentMonthLabel)
+  );
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [showSavingsModal, setShowSavingsModal] = useState(false);
@@ -181,6 +190,7 @@ export default function Dashboard() {
   const scrollX = useRef(new Animated.Value(0)).current;
   const { width: screenWidth } = useWindowDimensions();
   const dayCardWidth = screenWidth - 40;
+  const narrow = isNarrow(screenWidth);
 
   const baseAllowance = stats.baseAllowance;
   const currentRemaining = stats.currentRemaining;
@@ -192,8 +202,6 @@ export default function Dashboard() {
       totalBank !== null
   );
 
-  const selectedDateInfo = parseDateKey(selectedDate);
-  const selectedDayName = selectedDateInfo?.toLocaleDateString('en-US', { weekday: 'long' }) ?? '';
   const selectedWeek = getWeekNumberInMonth(selectedDate);
   const weeks = useMemo(() => getMonthWeeks(stats.currentMonthLabel), [stats.currentMonthLabel]);
   const weekDayKeys = useMemo(() => getWeekDayKeys(selectedDate), [selectedDate]);
@@ -228,14 +236,10 @@ export default function Dashboard() {
   const dayTotal = dayExpenses.reduce((total, expense) => total + expense.amount, 0);
 
   useEffect(() => {
-    if (getMonthLabel(selectedDate) !== stats.currentMonthLabel) {
-      const today = getDateKey();
-      if (getMonthLabel(today) === stats.currentMonthLabel) {
-        setSelectedDate(today);
-      } else {
-        setSelectedDate(`${stats.currentMonthLabel}-01`);
-      }
-    }
+    setSelectedDate((prev) => {
+      if (getMonthLabel(prev) === stats.currentMonthLabel) return prev;
+      return getOpenMonthDate(stats.currentMonthLabel);
+    });
   }, [stats.currentMonthLabel]);
 
   useEffect(() => {
@@ -254,7 +258,7 @@ export default function Dashboard() {
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [view, selectedDayIndex, dayCardWidth]);
+  }, [view, selectedDayIndex, dayCardWidth, scrollX]);
 
   if (!isLoaded) {
     return (
@@ -268,15 +272,15 @@ export default function Dashboard() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ScrollView
-          contentContainerStyle={styles.setupScroll}
+          contentContainerStyle={[styles.setupScroll, narrow && { padding: 16 }]}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
           <View style={styles.setupContent}>
-            <View style={styles.setupIcon}>
-              <Ionicons name="wallet-outline" size={32} color={THEME.colors.pillDark} />
+            <View style={[styles.setupIcon, narrow && { width: 64, height: 64, borderRadius: 32 }]}>
+              <Ionicons name="wallet-outline" size={narrow ? 26 : 32} color={THEME.colors.pillDark} />
             </View>
-            <Text style={styles.setupTitle}>Set up your ledger</Text>
+            <Text style={[styles.setupTitle, { fontSize: narrow ? 22 : 26 }]}>Set up your ledger</Text>
             <Text style={styles.setupText}>
               Add your monthly allowance, savings account name, and current savings balance to begin.
             </Text>
@@ -284,7 +288,7 @@ export default function Dashboard() {
               style={styles.primaryButton}
               onPress={() => {
                 if (!hasAcceptedTerms) return;
-                router.push('/settings');
+                router.push('/settings/budget');
               }}
               activeOpacity={0.8}
             >
@@ -299,14 +303,14 @@ export default function Dashboard() {
 
   const showDay = () => {
     isManualNavigationRef.current = false;
-    setSelectedDate(getDateKey());
+    setSelectedDate(getOpenMonthDate(stats.currentMonthLabel));
     setView('day');
   };
 
   if (view === 'weeks') {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.content, narrow && { padding: 14, gap: 16 }]} showsVerticalScrollIndicator={false}>
           <BalanceHeroCard
             monthLabel={stats.currentMonthLabel}
             currentRemaining={currentRemaining}
@@ -379,7 +383,10 @@ export default function Dashboard() {
               const result = addMoney(amount, note);
               if (!result.ok && result.message) {
                 Alert.alert('Cannot add money', result.message);
+                return false;
               }
+              setShowAddMoney(false);
+              return true;
             }}
             onClose={() => setShowAddMoney(false)}
           />
@@ -401,7 +408,7 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, narrow && { padding: 14, gap: 16 }]} showsVerticalScrollIndicator={false}>
         <BalanceHeroCard
           monthLabel={stats.currentMonthLabel}
           currentRemaining={currentRemaining}
@@ -412,7 +419,7 @@ export default function Dashboard() {
 
         <View style={styles.dayNavRow}>
           <View style={styles.dayNavTitleGroup}>
-            <Text style={styles.weekLabel}>Week {selectedWeek}</Text>
+            <Text style={[styles.weekLabel, { fontSize: narrow ? 20 : 25 }]}>Week {selectedWeek}</Text>
             <Text style={styles.dateLabel}>{formatFullDate(selectedDate)}</Text>
           </View>
           <TouchableOpacity
@@ -467,9 +474,12 @@ export default function Dashboard() {
               handleScrollEnd(event.nativeEvent.contentOffset.x);
             }}
             onScrollEndDrag={(event) => {
-              isDraggingRef.current = false;
-              isManualNavigationRef.current = true;
-              handleScrollEnd(event.nativeEvent.contentOffset.x);
+              const velocityX = Math.abs(event.nativeEvent.velocity?.x ?? 0);
+              if (velocityX < 0.05) {
+                isDraggingRef.current = false;
+                isManualNavigationRef.current = true;
+                handleScrollEnd(event.nativeEvent.contentOffset.x);
+              }
             }}
           >
             {weekDayKeys.map((dateKey) => {
@@ -482,7 +492,7 @@ export default function Dashboard() {
               return (
                 <View
                   key={dateKey}
-                  style={[styles.dailyCard, { width: dayCardWidth }]}
+                  style={[styles.dailyCard, { width: dayCardWidth }, narrow && { padding: 14, minHeight: 240 }]}
                 >
                   <View style={styles.dailyCardHeader}>
                     <View>
@@ -526,7 +536,11 @@ export default function Dashboard() {
                   ) : (
                     <View style={styles.expenseList}>
                       {expensesForDay.map((expense) => (
-                        <ExpenseItem key={expense.id} expense={expense} onDelete={deleteExpense} />
+                        <ExpenseItem
+                          key={expense.id}
+                          expense={expense}
+                          onDelete={expense.subscriptionId ? undefined : deleteExpense}
+                        />
                       ))}
                     </View>
                   )}
@@ -536,7 +550,6 @@ export default function Dashboard() {
           </Animated.ScrollView>
         </View>
 
-        {/* 3-Dot Wheel Pagination Indicator */}
         <WheelPagination
           total={weekDayKeys.length}
           scrollX={scrollX}
@@ -577,7 +590,7 @@ export default function Dashboard() {
               const result = addExpense(title, amount, date);
               if (!result.ok) {
                 Alert.alert('Cannot add expense', result.message);
-                return; // keep the sheet open
+                return;
               }
               setShowAddExpense(false);
             }}
@@ -594,7 +607,10 @@ export default function Dashboard() {
             const result = addMoney(amount, note);
             if (!result.ok && result.message) {
               Alert.alert('Cannot add money', result.message);
+              return false;
             }
+            setShowAddMoney(false);
+            return true;
           }}
           onClose={() => setShowAddMoney(false)}
         />

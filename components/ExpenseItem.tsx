@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, Platform, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Expense } from '@/types';
 import { formatDateShort, formatCurrency, getDayName } from '@/utils/dates';
@@ -12,10 +12,29 @@ interface ExpenseItemProps {
 }
 
 export default function ExpenseItem({ expense, onDelete, showDay = false }: ExpenseItemProps) {
+  const confirmDelete = () => {
+    if (!onDelete) return;
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Remove ${expense.title} from your ledger?`)) {
+        onDelete(expense.id);
+      }
+      return;
+    }
+
+    Alert.alert('Delete expense?', `Remove ${expense.title} from your ledger?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => onDelete(expense.id) },
+    ]);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <Ionicons name="receipt-outline" size={18} color={THEME.colors.textDark} />
+        <Ionicons
+          name={expense.subscriptionId ? 'repeat-outline' : 'receipt-outline'}
+          size={18}
+          color={THEME.colors.textDark}
+        />
       </View>
 
       <View style={styles.details}>
@@ -23,21 +42,17 @@ export default function ExpenseItem({ expense, onDelete, showDay = false }: Expe
           {expense.title}
         </Text>
         <Text style={styles.meta}>
+          {expense.subscriptionId ? 'Monthly subscription • ' : ''}
           {showDay ? `${getDayName(expense.date)}, ` : ''}
           {formatDateShort(expense.date)}
         </Text>
       </View>
 
-      <Text style={styles.amount}>-P {formatCurrency(expense.amount)}</Text>
+      <Text style={styles.amount}>-₱ {formatCurrency(expense.amount)}</Text>
 
       {onDelete && (
         <TouchableOpacity
-          onPress={() =>
-            Alert.alert('Delete expense?', `Remove ${expense.title} from your ledger?`, [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => onDelete(expense.id) },
-            ])
-          }
+          onPress={confirmDelete}
           style={styles.deleteButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >

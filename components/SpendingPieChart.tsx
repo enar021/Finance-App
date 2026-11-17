@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
@@ -67,25 +68,26 @@ export default function SpendingPieChart({
   allowance,
   selectedKey,
   onSelectSegment,
-  size = 240,
+  size,
   animationKey,
 }: SpendingPieChartProps) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const outerRadius = size / 2 - 10;
-  const innerRadius = outerRadius - 38;
+  const { width: screenWidth } = useWindowDimensions();
+  const maxSafeSize = Math.max(170, screenWidth - 120);
+  const computedDefault = Math.min(Math.max(screenWidth - 150, 180), 260);
+  const responsiveSize = size !== undefined ? Math.min(size, maxSafeSize) : computedDefault;
+
+  const cx = responsiveSize / 2;
+  const cy = responsiveSize / 2;
+  const outerRadius = responsiveSize / 2 - 10;
+  const innerRadius = outerRadius - Math.max(28, responsiveSize * 0.16);
 
   const selectedSegment = segments.find((s) => s.key === selectedKey);
 
-  // Native Driver values for pop & fade
   const centerScale = useRef(new Animated.Value(0.9)).current;
   const centerOpacity = useRef(new Animated.Value(0)).current;
-
-  // Clockwise fill-up progress (0 to 1)
   const [fillProgress, setFillProgress] = useState(0);
 
   useEffect(() => {
-    // 1. Center hub smooth entrance
     centerScale.setValue(0.92);
     centerOpacity.setValue(0);
     Animated.parallel([
@@ -103,7 +105,6 @@ export default function SpendingPieChart({
       }),
     ]).start();
 
-    // 2. Smooth, graceful clockwise fill-up sweep
     if (segments.length === 0 || totalAmount === 0) {
       setFillProgress(1);
       return;
@@ -112,13 +113,12 @@ export default function SpendingPieChart({
     setFillProgress(0);
     let start: number | null = null;
     let reqId: number;
-    const duration = 950; // Smooth, unhurried, elegant circular fill-up
+    const duration = 950;
 
     const animateSweep = (timestamp: number) => {
       if (!start) start = timestamp;
       const elapsed = timestamp - start;
       const raw = Math.min(1, elapsed / duration);
-      // Silky smooth cubic deceleration curve
       const eased = 1 - Math.pow(1 - raw, 3);
       setFillProgress(eased);
 
@@ -132,16 +132,15 @@ export default function SpendingPieChart({
     return () => {
       if (reqId) cancelAnimationFrame(reqId);
     };
-  }, [animationKey, segments.length, totalAmount]);
+  }, [animationKey, segments.length, totalAmount, centerOpacity, centerScale]);
 
-  // Compute fill-up slices mathematically
   const totalCircle = Math.PI * 2;
   const targetAngle = fillProgress * totalCircle;
   const hasMultiple = segments.length > 1;
   const sliceGap = hasMultiple ? 0.04 : 0;
 
   let accumulatedAngle = 0;
-  let currentStartAngle = -Math.PI / 2; // Start at 12 o'clock
+  let currentStartAngle = -Math.PI / 2;
 
   const slices = segments
     .map((segment) => {
@@ -150,7 +149,6 @@ export default function SpendingPieChart({
       const segEnd = accumulatedAngle + fullSegmentSweep;
       accumulatedAngle += fullSegmentSweep;
 
-      // How much of this segment is currently filled
       let visibleSweep = 0;
       if (targetAngle >= segEnd) {
         visibleSweep = fullSegmentSweep;
@@ -162,7 +160,6 @@ export default function SpendingPieChart({
         return null;
       }
 
-      // Safe gap calculation that prevents inverted arc anomalies
       const gap = hasMultiple && visibleSweep > sliceGap * 1.8 ? sliceGap : 0;
       const startAngle = currentStartAngle + gap / 2;
       const endAngle = currentStartAngle + Math.max(0.001, visibleSweep - gap / 2);
@@ -174,7 +171,6 @@ export default function SpendingPieChart({
 
       let pathD = '';
       if (segment.percentage >= 99.5 && fillProgress >= 0.99) {
-        // Complete 360-degree circle split into two 180-deg arcs
         const midAngle = startAngle + Math.PI;
         const arc1 = describeArc(cx, cy, activeInner, activeOuter, startAngle, midAngle);
         const arc2 = describeArc(cx, cy, activeInner, activeOuter, midAngle, startAngle + totalCircle);
@@ -193,15 +189,15 @@ export default function SpendingPieChart({
 
   return (
     <View style={styles.container}>
-      <View style={[styles.chartWrapper, { width: size, height: size }]}>
-        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <View style={[styles.chartWrapper, { width: responsiveSize, height: responsiveSize }]}>
+        <Svg width={responsiveSize} height={responsiveSize} viewBox={`0 0 ${responsiveSize} ${responsiveSize}`}>
           {totalAmount === 0 ? (
             <Circle
               cx={cx}
               cy={cy}
               r={(outerRadius + innerRadius) / 2}
               stroke="#E2E8F0"
-              strokeWidth={38}
+              strokeWidth={outerRadius - innerRadius}
               fill="none"
             />
           ) : (
@@ -221,7 +217,6 @@ export default function SpendingPieChart({
           )}
         </Svg>
 
-        {/* Center cutout content */}
         <Animated.View
           style={[
             styles.centerCutout,

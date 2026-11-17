@@ -7,8 +7,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME } from '@/constants/theme';
 import { PennyWiseLogo } from '@/components/PennyWiseLogo';
 
 interface StartupAnimationProps {
@@ -17,6 +17,9 @@ interface StartupAnimationProps {
 }
 
 export function StartupAnimation({ onFinish, isReady = true }: StartupAnimationProps) {
+  const insets = useSafeAreaInsets();
+  const footerBottom = Math.max(insets.bottom + 16, 28);
+
   // All animations use 100% Native Driver for locked 60-120 FPS
   const logoScale = useRef(new Animated.Value(0.8)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -29,10 +32,21 @@ export function StartupAnimation({ onFinish, isReady = true }: StartupAnimationP
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
   const hasTriggeredExit = useRef(false);
+  const isMountedRef = useRef(true);
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      screenOpacity.stopAnimation();
+    };
+  }, [screenOpacity]);
 
   useEffect(() => {
     // Smooth, graceful entrance sequence running on GPU / Native Driver
-    Animated.parallel([
+    const entranceAnimation = Animated.parallel([
       // Logo card smooth spring
       Animated.timing(logoOpacity, {
         toValue: 1,
@@ -76,15 +90,21 @@ export function StartupAnimation({ onFinish, isReady = true }: StartupAnimationP
           }),
         ]),
       ]),
-    ]).start();
-  }, []);
+    ]);
+
+    entranceAnimation.start();
+
+    return () => {
+      entranceAnimation.stop();
+    };
+  }, [logoOpacity, logoScale, sparkScale, textOpacity, textTranslateY]);
 
   // Smooth, unhurried exit after comfortable display duration
   useEffect(() => {
     if (!isReady || hasTriggeredExit.current) return;
 
     const timer = setTimeout(() => {
-      if (hasTriggeredExit.current) return;
+      if (!isMountedRef.current || hasTriggeredExit.current) return;
       hasTriggeredExit.current = true;
 
       Animated.timing(screenOpacity, {
@@ -92,13 +112,19 @@ export function StartupAnimation({ onFinish, isReady = true }: StartupAnimationP
         duration: 350,
         useNativeDriver: true,
         easing: Easing.inOut(Easing.quad),
-      }).start(() => {
-        onFinish();
+      }).start(({ finished }) => {
+        if (!isMountedRef.current) return;
+
+        if (finished) {
+          onFinishRef.current();
+        } else {
+          hasTriggeredExit.current = false;
+        }
       });
     }, 750);
 
     return () => clearTimeout(timer);
-  }, [isReady]);
+  }, [isReady, screenOpacity]);
 
   return (
     <Animated.View
@@ -110,7 +136,7 @@ export function StartupAnimation({ onFinish, isReady = true }: StartupAnimationP
         },
       ]}
     >
-      <View style={styles.centerContent}>
+      <View style={[styles.centerContent, { paddingBottom: footerBottom + 24 }]}>
         {/* Brand Logo Card */}
         <Animated.View
           style={[
@@ -158,11 +184,12 @@ export function StartupAnimation({ onFinish, isReady = true }: StartupAnimationP
         style={[
           styles.footer,
           {
+            bottom: footerBottom,
             opacity: textOpacity,
           },
         ]}
       >
-        <Text style={styles.footerText}>Weekly Budget & Savings</Text>
+        <Text style={styles.footerText}>Monthly Budget & Savings</Text>
       </Animated.View>
     </Animated.View>
   );
@@ -238,7 +265,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: 'absolute',
-    bottom: 36,
     alignItems: 'center',
   },
   footerText: {

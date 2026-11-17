@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,7 +48,7 @@ export default function SavingsHistoryModal({
     // Chronological order: oldest to newest
     const chronological = [...history].sort((a, b) => a.monthLabel.localeCompare(b.monthLabel));
 
-    const points: Array<{ label: string; fullLabel: string; value: number; change?: number }> = [
+    const points: { label: string; fullLabel: string; value: number; change?: number }[] = [
       {
         label: 'Start',
         fullLabel: 'Initial Balance',
@@ -116,7 +115,7 @@ export default function SavingsHistoryModal({
       pathArea: areaD,
       pointCoords: coords,
     };
-  }, [chartPoints]);
+  }, [chartPoints, graphWidth]);
 
   const activePoint =
     selectedPointIndex !== null && pointCoords[selectedPointIndex]

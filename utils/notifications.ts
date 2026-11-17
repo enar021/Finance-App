@@ -1,10 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { getDateKey } from './dates';
 
 export const NOTIF_ENABLED_KEY = '@pennywise_notifications_enabled';
 const LAST_MIDDAY_KEY = '@pennywise_last_midday_notif';
 const LAST_EVENING_KEY = '@pennywise_last_evening_notif';
+
+const MIDDAY_NOTIF_ID = 'pennywise-midday';
+const EVENING_NOTIF_ID = 'pennywise-evening';
+const REMINDER_CHANNEL_ID = 'pennywise-daily-reminders';
 
 export const REMINDER_TIMES = {
   midday: { hour: 13, minute: 0, label: '1:00 PM', name: 'Midday Check-in' },
@@ -17,36 +22,141 @@ export type NotificationPermissionStatus =
   | 'default'
   | 'unsupported';
 
+let cachedNativePermissionStatus: NotificationPermissionStatus = 'default';
+
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
+
+function mapExpoPermissionStatus(
+  status: Notifications.PermissionStatus
+): NotificationPermissionStatus {
+  if (status === Notifications.PermissionStatus.GRANTED) return 'granted';
+  if (status === Notifications.PermissionStatus.DENIED) return 'denied';
+  return 'default';
+}
+
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
+      name: 'Daily Expense Reminders',
+      importance: 6 as Notifications.AndroidImportance, // AndroidImportance.HIGH
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#10B981',
+    });
+  } catch {
+    // ignore channel setup errors on unsupported environments
+  }
+}
+
 /**
- * Check browser or device notification permission status
+ * Synchronous permission status check (uses cached status on native)
  */
 export function getNotificationPermissionStatus(): NotificationPermissionStatus {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
-    return Notification.permission as NotificationPermissionStatus;
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission as NotificationPermissionStatus;
+    }
+    return 'unsupported';
   }
-  return 'unsupported';
+  return cachedNativePermissionStatus;
 }
 
 /**
- * Request notification permissions from user
+ * Async permission status check across Web, iOS, and Android
+ */
+export async function getNotificationPermissionStatusAsync(): Promise<NotificationPermissionStatus> {
+  if (Platform.OS === 'web') {
+    return getNotificationPermissionStatus();
+  }
+
+  try {
+    const settings = await Notifications.getPermissionsAsync();
+    const mapped = mapExpoPermissionStatus(settings.status);
+    cachedNativePermissionStatus = mapped;
+    return mapped;
+  } catch {
+    return 'unsupported';
+  }
+}
+
+/**
+ * Request notification permissions from user on Web, iOS, or Android
  */
 export async function requestNotificationPermission(): Promise<NotificationPermissionStatus> {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
-    try {
-      const permission = await Notification.requestPermission();
-      return permission as NotificationPermissionStatus;
-    } catch {
-      return 'denied';
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        return permission as NotificationPermissionStatus;
+      } catch {
+        return 'denied';
+      }
     }
+    return 'unsupported';
   }
-  return 'unsupported';
+
+  try {
+    await ensureAndroidChannel();
+    const existing = await Notifications.getPermissionsAsync();
+    let finalStatus = existing.status;
+
+    if (finalStatus !== Notifications.PermissionStatus.GRANTED) {
+      const requested = await Notifications.requestPermissionsAsync();
+      finalStatus = requested.status;
+    }
+
+    const mapped = mapExpoPermissionStatus(finalStatus);
+    cachedNativePermissionStatus = mapped;
+
+    if (mapped === 'granted') {
+      await syncNativeScheduledReminders();
+    }
+
+    return mapped;
+  } catch {
+    cachedNativePermissionStatus = 'denied';
+    return 'denied';
+  }
 }
 
 /**
- * Dispatch a notification via Service Worker or Web Notification
+ * Dispatch an immediate notification via Expo Notifications (native) or Service Worker / Web Notification (web)
  */
 export async function sendNotification(title: string, body: string): Promise<boolean> {
-  if (Platform.OS !== 'web' || typeof window === 'undefined' || !('Notification' in window)) {
+  if (Platform.OS !== 'web') {
+    const status = await getNotificationPermissionStatusAsync();
+    if (status !== 'granted') {
+      return false;
+    }
+
+    try {
+      await ensureAndroidChannel();
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          sound: true,
+        },
+        trigger: null,
+      });
+      return true;
+    } catch (err) {
+      console.warn('Could not display native notification:', err);
+      return false;
+    }
+  }
+
+  if (typeof window === 'undefined' || !('Notification' in window)) {
     return false;
   }
 
@@ -90,7 +200,7 @@ export async function sendNotification(title: string, body: string): Promise<boo
  * Send an immediate test notification
  */
 export async function sendTestReminder(): Promise<{ ok: boolean; status: NotificationPermissionStatus }> {
-  let status = getNotificationPermissionStatus();
+  let status = await getNotificationPermissionStatusAsync();
 
   if (status === 'default') {
     status = await requestNotificationPermission();
@@ -121,20 +231,109 @@ export async function areNotificationsEnabled(): Promise<boolean> {
 }
 
 /**
- * Set user notification toggle preference
+ * Cancel native scheduled daily reminders
+ */
+export async function cancelNativeDailyReminders(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(MIDDAY_NOTIF_ID);
+  } catch {
+    // ignore if not scheduled
+  }
+  try {
+    await Notifications.cancelScheduledNotificationAsync(EVENING_NOTIF_ID);
+  } catch {
+    // ignore if not scheduled
+  }
+}
+
+/**
+ * Register daily repeating OS notifications at 1:00 PM and 8:30 PM on iOS & Android
+ */
+export async function syncNativeScheduledReminders(): Promise<void> {
+  if (Platform.OS === 'web') return;
+
+  const isEnabled = await areNotificationsEnabled();
+  if (!isEnabled) {
+    await cancelNativeDailyReminders();
+    return;
+  }
+
+  const status = await getNotificationPermissionStatusAsync();
+  if (status !== 'granted') return;
+
+  try {
+    await ensureAndroidChannel();
+
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const hasMidday = scheduled.some((item) => item.identifier === MIDDAY_NOTIF_ID);
+    const hasEvening = scheduled.some((item) => item.identifier === EVENING_NOTIF_ID);
+
+    if (!hasMidday) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: MIDDAY_NOTIF_ID,
+        content: {
+          title: 'Penny Wise • Midday Check-in ☀️',
+          body: 'Grabbed lunch or morning coffee? Log your expenses in Penny Wise to stay within budget!',
+          sound: true,
+        },
+        trigger: {
+          type: 'daily' as Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: REMINDER_TIMES.midday.hour,
+          minute: REMINDER_TIMES.midday.minute,
+          ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
+        },
+      });
+    }
+
+    if (!hasEvening) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: EVENING_NOTIF_ID,
+        content: {
+          title: 'Penny Wise • Evening Wrap-up 🌙',
+          body: "Don't forget to record today's spending in Penny Wise before your day ends!",
+          sound: true,
+        },
+        trigger: {
+          type: 'daily' as Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: REMINDER_TIMES.evening.hour,
+          minute: REMINDER_TIMES.evening.minute,
+          ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Could not schedule native reminders:', err);
+  }
+}
+
+/**
+ * Set user notification toggle preference and sync native schedules
  */
 export async function setNotificationsEnabled(enabled: boolean): Promise<void> {
   try {
     await AsyncStorage.setItem(NOTIF_ENABLED_KEY, enabled ? 'true' : 'false');
+    if (Platform.OS !== 'web') {
+      if (enabled) {
+        await syncNativeScheduledReminders();
+      } else {
+        await cancelNativeDailyReminders();
+      }
+    }
   } catch {
     // ignore
   }
 }
 
 /**
- * Check current time and fire midday (13:00) or evening (20:30) reminders
+ * Sync native OS daily schedules (iOS/Android) or fire foreground/PWA window checks (Web)
  */
 export async function checkAndTriggerScheduledReminders(): Promise<void> {
+  if (Platform.OS !== 'web') {
+    await syncNativeScheduledReminders();
+    return;
+  }
+
   const isEnabled = await areNotificationsEnabled();
   if (!isEnabled) return;
 

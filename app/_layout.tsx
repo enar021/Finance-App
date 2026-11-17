@@ -23,9 +23,6 @@ function RootTabs() {
   const acceptTerms = useFinanceStore((s) => s.acceptTerms);
   const insets = useSafeAreaInsets();
 
-  // Mobile responsiveness:
-  // On iOS Safari / PWA, the home indicator requires at least 26px bottom padding so labels are never cut off.
-  // On native iOS/Android, insets.bottom gives the exact system inset.
   const isWeb = Platform.OS === 'web';
   const bottomPadding = Math.max(insets.bottom, isWeb ? 26 : 12);
   const tabHeight = 58 + bottomPadding;
@@ -35,12 +32,10 @@ function RootTabs() {
   useEffect(() => {
     loadData();
 
-    // Hide native splash screen so our animated splash takes over seamlessly
     SplashScreen.hideAsync().catch(() => {
       /* ignore */
     });
 
-    // Check for scheduled expense reminders on startup
     checkAndTriggerScheduledReminders();
 
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -50,7 +45,6 @@ function RootTabs() {
       }
     });
 
-    // Check periodically in case month changes or reminder time arrives
     const interval = setInterval(() => {
       checkAndAdvanceMonth();
       checkAndTriggerScheduledReminders();
@@ -60,14 +54,14 @@ function RootTabs() {
       subscription.remove();
       clearInterval(interval);
     };
-  }, []);
+  }, [loadData, checkAndAdvanceMonth]);
 
   return (
     <View style={{ flex: 1, backgroundColor: THEME.colors.background }}>
       <StatusBar style="dark" />
       <Tabs
         screenOptions={{
-          headerShown: false, // Clean custom headers in each screen matching mockups
+          headerShown: false,
           tabBarStyle: {
             backgroundColor: '#FFFFFF',
             borderTopColor: '#E2E8F0',
@@ -94,8 +88,8 @@ function RootTabs() {
           name="index"
           options={{
             title: 'Ledger',
-            tabBarIcon: ({ color, size }: { color: any; size: number }) => (
-              <Ionicons name="wallet-outline" size={size} color={color} />
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="wallet-outline" size={size} color={color as string} />
             ),
           }}
         />
@@ -103,8 +97,8 @@ function RootTabs() {
           name="history"
           options={{
             title: 'Statistics',
-            tabBarIcon: ({ color, size }: { color: any; size: number }) => (
-              <Ionicons name="pie-chart-outline" size={size} color={color} />
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="pie-chart-outline" size={size} color={color as string} />
             ),
           }}
         />
@@ -112,14 +106,13 @@ function RootTabs() {
           name="settings"
           options={{
             title: 'Settings',
-            tabBarIcon: ({ color, size }: { color: any; size: number }) => (
-              <Ionicons name="shield-checkmark-outline" size={size} color={color} />
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="shield-checkmark-outline" size={size} color={color as string} />
             ),
           }}
         />
       </Tabs>
 
-      {/* Startup brand animation overlay */}
       {!isAnimationFinished && (
         <StartupAnimation
           isReady={isLoaded}
@@ -127,7 +120,6 @@ function RootTabs() {
         />
       )}
 
-      {/* Mandatory first-launch Privacy & Legal Terms Agreement */}
       {isLoaded && isAnimationFinished && !hasAcceptedTerms && (
         <TermsAgreementModal
           visible
