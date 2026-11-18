@@ -2,6 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Build Android APK (Local)",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build:android:apk"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "group": "build"
+    },
+    {
       "label": "Run on Phone (Expo Start)",
       "type": "shell",
       "command": "cmd /c npx expo start",
