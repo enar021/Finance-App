@@ -33,6 +33,7 @@ import {
 } from '@/utils/dates';
 import { isNarrow } from '@/utils/responsive';
 import { showAlert } from '@/utils/alerts';
+import type { Expense } from '@/types';
 
 type DashboardView = 'day' | 'weeks';
 
@@ -169,6 +170,7 @@ export default function Dashboard() {
     isLoaded,
     checkAndAdvanceMonth,
     hasAcceptedTerms,
+    updateExpense,
   } = useFinanceStore();
   const [view, setView] = useState<DashboardView>('day');
 
@@ -184,6 +186,7 @@ export default function Dashboard() {
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [showSavingsModal, setShowSavingsModal] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const dayPagerRef = useRef<any>(null);
   const isManualNavigationRef = useRef(false);
   const isDraggingRef = useRef(false);
@@ -234,6 +237,43 @@ export default function Dashboard() {
     [expenses, selectedDate]
   );
   const dayTotal = dayExpenses.reduce((total, expense) => total + expense.amount, 0);
+  const monthToDateExpenses = useMemo(
+    () =>
+      expenses.filter(
+        (expense) =>
+          expense.monthLabel === stats.currentMonthLabel &&
+          expense.date <= selectedDate
+      ),
+    [expenses, stats.currentMonthLabel, selectedDate]
+  );
+  const monthToDateDayCount = useMemo(() => {
+    const uniqueDays = new Set(monthToDateExpenses.map((expense) => expense.date));
+    return Math.max(1, uniqueDays.size);
+  }, [monthToDateExpenses]);
+  const averageDaySpend =
+    monthToDateExpenses.reduce((total, expense) => total + expense.amount, 0) /
+    monthToDateDayCount;
+  const highDaySpend = dayTotal > 0 && dayTotal >= Math.max(averageDaySpend * 1.5, 500);
+
+  const selectedWeekKey = getMonthWeeks(stats.currentMonthLabel).find(
+    (week) => selectedDate >= week.startDate && selectedDate <= week.endDate
+  );
+  const selectedWeekExpenses = selectedWeekKey
+    ? expenses.filter(
+        (expense) =>
+          expense.monthLabel === stats.currentMonthLabel &&
+          expense.date >= selectedWeekKey.startDate &&
+          expense.date <= selectedWeekKey.endDate
+      )
+    : [];
+  const selectedWeekTotal = selectedWeekExpenses.reduce(
+    (total, expense) => total + expense.amount,
+    0
+  );
+  const averageWeekSpend =
+    ((baseAllowance ?? 0) + (stats.extraAllowance ?? 0)) / Math.max(1, weeks.length);
+  const highWeekSpend =
+    selectedWeekTotal >= Math.max(averageWeekSpend * 1.35, 1500);
 
   useEffect(() => {
     setSelectedDate((prev) => {
@@ -282,8 +322,22 @@ export default function Dashboard() {
             </View>
             <Text style={[styles.setupTitle, { fontSize: narrow ? 22 : 26 }]}>Set up your ledger</Text>
             <Text style={styles.setupText}>
-              Add your monthly allowance, savings account name, and current savings balance to begin.
+              Three quick details and you are ready to start tracking.
             </Text>
+            <View style={styles.setupSteps}>
+              {[
+                ['1', 'Add a savings account name'],
+                ['2', 'Set your monthly allowance'],
+                ['3', 'Enter your current savings balance'],
+              ].map(([step, label]) => (
+                <View key={step} style={styles.setupStep}>
+                  <View style={styles.setupStepNumber}>
+                    <Text style={styles.setupStepNumberText}>{step}</Text>
+                  </View>
+                  <Text style={styles.setupStepText}>{label}</Text>
+                </View>
+              ))}
+            </View>
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={() => {
@@ -291,6 +345,8 @@ export default function Dashboard() {
                 router.push('/settings/budget');
               }}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Set up your budget"
             >
               <Text style={styles.primaryButtonText}>Set up budget</Text>
               <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
@@ -426,11 +482,39 @@ export default function Dashboard() {
             style={styles.backButton}
             onPress={() => setView('weeks')}
             activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Back to month overview"
           >
             <Ionicons name="arrow-back" size={16} color={THEME.colors.textDark} />
             <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
         </View>
+
+        {(highDaySpend || highWeekSpend) && (
+          <View
+            style={styles.warningCard}
+            accessibilityRole="summary"
+            accessibilityLabel={
+              highDaySpend
+                ? 'High spending warning for this day'
+                : 'High spending warning for this week'
+            }
+          >
+            <View style={styles.warningIcon}>
+              <Ionicons name="warning-outline" size={18} color="#92400E" />
+            </View>
+            <View style={styles.warningTextGroup}>
+              <Text style={styles.warningTitle}>
+                {highDaySpend ? 'Higher-than-usual spending today' : 'This week is running high'}
+              </Text>
+              <Text style={styles.warningText}>
+                {highDaySpend
+                  ? `Today: ₱ ${formatCurrency(dayTotal)}. Review the entries below before continuing.`
+                  : `This week: ₱ ${formatCurrency(selectedWeekTotal)}. Your remaining budget may be affected.`}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.cardPagerWrapper}>
           <Animated.ScrollView
@@ -512,9 +596,11 @@ export default function Dashboard() {
                       style={styles.addIconButton}
                       onPress={() => {
                         setSelectedDate(dateKey);
+                        setEditingExpense(null);
                         setShowAddExpense(true);
                       }}
                       accessibilityLabel={`Add expense for ${dayName}`}
+                      accessibilityRole="button"
                     >
                       <Ionicons name="add" size={22} color="#FFFFFF" />
                     </TouchableOpacity>
@@ -525,13 +611,20 @@ export default function Dashboard() {
                       style={styles.emptyDay}
                       onPress={() => {
                         setSelectedDate(dateKey);
+                        setEditingExpense(null);
                         setShowAddExpense(true);
                       }}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add first expense for ${dayName}`}
                     >
                       <Ionicons name="receipt-outline" size={28} color={THEME.colors.textMuted} />
                       <Text style={styles.emptyDayTitle}>No expenses yet</Text>
-                      <Text style={styles.emptyDayText}>Tap to add an expense for {dayName}.</Text>
+                      <Text style={styles.emptyDayText}>Add your first expense for {dayName}.</Text>
+                      <View style={styles.emptyDayAction}>
+                        <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+                        <Text style={styles.emptyDayActionText}>Add expense</Text>
+                      </View>
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.expenseList}>
@@ -540,6 +633,14 @@ export default function Dashboard() {
                           key={expense.id}
                           expense={expense}
                           onDelete={expense.subscriptionId ? undefined : deleteExpense}
+                          onEdit={
+                            expense.subscriptionId
+                              ? undefined
+                              : (item) => {
+                                  setEditingExpense(item);
+                                  setShowAddExpense(true);
+                                }
+                          }
                         />
                       ))}
                     </View>
@@ -586,15 +687,22 @@ export default function Dashboard() {
           <ExpenseForm
             defaultDate={selectedDate}
             currentMonthLabel={stats.currentMonthLabel}
+            initialExpense={editingExpense ?? undefined}
             onSubmit={(title, amount, date) => {
-              const result = addExpense(title, amount, date);
+              const result = editingExpense
+                ? updateExpense(editingExpense.id, title, amount, date)
+                : addExpense(title, amount, date);
               if (!result.ok) {
                 showAlert('Cannot add expense', result.message);
                 return;
               }
               setShowAddExpense(false);
+              setEditingExpense(null);
             }}
-            onCancel={() => setShowAddExpense(false)}
+            onCancel={() => {
+              setShowAddExpense(false);
+              setEditingExpense(null);
+            }}
           />
         </Modal>
       )}
@@ -732,6 +840,17 @@ const styles = StyleSheet.create({
   emptyDay: { alignItems: 'center', flex: 1, justifyContent: 'center', paddingVertical: 70 },
   emptyDayTitle: { color: THEME.colors.textDark, fontSize: 17, fontWeight: '800', marginTop: 10 },
   emptyDayText: { color: THEME.colors.textSecondary, fontSize: 13, marginTop: 4, textAlign: 'center' },
+  emptyDayAction: {
+    alignItems: 'center',
+    backgroundColor: THEME.colors.pillDark,
+    borderRadius: THEME.radius.full,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  emptyDayActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   expenseList: { marginTop: 18 },
   totalBar: {
     alignItems: 'center',
@@ -824,6 +943,27 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
+  setupSteps: {
+    alignSelf: 'stretch',
+    backgroundColor: THEME.colors.white,
+    borderColor: '#DCE6E1',
+    borderRadius: THEME.radius.lg,
+    borderWidth: 1,
+    gap: 12,
+    marginTop: 18,
+    padding: 16,
+  },
+  setupStep: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  setupStepNumber: {
+    alignItems: 'center',
+    backgroundColor: THEME.colors.mintCard,
+    borderRadius: 14,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  setupStepNumberText: { color: THEME.colors.textDark, fontSize: 13, fontWeight: '800' },
+  setupStepText: { color: THEME.colors.textDark, flex: 1, fontSize: 14, fontWeight: '700' },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: THEME.colors.pillDark,
@@ -835,4 +975,25 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  warningCard: {
+    alignItems: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+    borderRadius: THEME.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+  },
+  warningIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FDE68A',
+    borderRadius: 10,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  warningTextGroup: { flex: 1 },
+  warningTitle: { color: '#78350F', fontSize: 14, fontWeight: '800' },
+  warningText: { color: '#92400E', fontSize: 12, lineHeight: 17, marginTop: 2 },
 });

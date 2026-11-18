@@ -31,7 +31,7 @@ export const THEME = {
     textDark: '#1E2229',       // Deep charcoal heading color
     textMedium: '#475161',     // Card body text
     textSecondary: '#5F697A',  // Secondary labels
-    textMuted: '#7E8B9E',      // Small tags, subtitles
+    textMuted: '#667085',      // Small tags, subtitles (improved contrast)
     
     // Accents & indicators
     indicatorRed: '#E53E3E',   // For the 10,500 -> 10,000 flow

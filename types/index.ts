@@ -68,6 +68,7 @@ export interface FinanceState {
   saveSettings: (bankName: string, allowance: number, savingsBalance: number) => void;
   addMoney: (amount: number, note?: string) => { ok: boolean; message?: string };
   addExpense: (title: string, amount: number, date: Date) => AddExpenseResult;
+  updateExpense: (id: string, title: string, amount: number, date: Date) => AddExpenseResult;
   addSubscription: (name: string, amount: number) => AddSubscriptionResult;
   cancelSubscription: (id: string) => void;
   deleteExpense: (id: string) => void;

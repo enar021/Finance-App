@@ -19,12 +19,14 @@ import {
   View,
 } from "react-native";
 import { showAlert } from "@/utils/alerts";
+import type { Expense } from "@/types";
 
 interface ExpenseFormProps {
   onSubmit: (title: string, amount: number, date: Date) => void;
   onCancel: () => void;
   defaultDate?: string; // "YYYY-MM-DD"
   currentMonthLabel?: string; // "YYYY-MM", the open budget month
+  initialExpense?: Expense;
 }
 
 const CATEGORY_PRESETS = [
@@ -41,14 +43,17 @@ export default function ExpenseForm({
   onCancel,
   defaultDate,
   currentMonthLabel,
+  initialExpense,
 }: ExpenseFormProps) {
-  const [title, setTitle] = useState("");
-  const [amount, setAmount] = useState("");
+  const [title, setTitle] = useState(initialExpense?.title ?? "");
+  const [amount, setAmount] = useState(initialExpense ? initialExpense.amount.toString() : "");
+  const [isSaving, setIsSaving] = useState(false);
 
   const todayStr = getDateKey();
-  const [dateStr, setDateStr] = useState(defaultDate || todayStr);
+  const [dateStr, setDateStr] = useState(initialExpense?.date ?? defaultDate ?? todayStr);
 
   const handleSubmit = () => {
+    if (isSaving) return;
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       showAlert(
@@ -94,7 +99,12 @@ export default function ExpenseForm({
       return;
     }
 
-    onSubmit(trimmedTitle, parsedAmount, parsedDate);
+    setIsSaving(true);
+    try {
+      onSubmit(trimmedTitle, parsedAmount, parsedDate);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -112,8 +122,13 @@ export default function ExpenseForm({
           <View style={styles.dragHandle} />
 
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Log Expense</Text>
-            <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
+            <Text style={styles.headerTitle}>{initialExpense ? "Edit Expense" : "Log Expense"}</Text>
+            <TouchableOpacity
+              onPress={onCancel}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Close expense form"
+            >
               <Ionicons name="close" size={20} color={THEME.colors.textDark} />
             </TouchableOpacity>
           </View>
@@ -157,6 +172,8 @@ export default function ExpenseForm({
             placeholderTextColor={THEME.colors.textMuted}
             value={title}
             onChangeText={setTitle}
+            accessibilityLabel="Expense name"
+            returnKeyType="next"
           />
 
           <Text style={styles.inputLabel}>Amount (₱)</Text>
@@ -167,6 +184,7 @@ export default function ExpenseForm({
             value={amount}
             onChangeText={setAmount}
             keyboardType="decimal-pad"
+            accessibilityLabel="Expense amount"
           />
 
           <Text style={styles.inputLabel}>Date (YYYY-MM-DD)</Text>
@@ -176,16 +194,22 @@ export default function ExpenseForm({
             placeholderTextColor={THEME.colors.textMuted}
             value={dateStr}
             onChangeText={setDateStr}
+            accessibilityLabel="Expense date"
           />
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, isSaving && styles.submitButtonDisabled]}
               onPress={handleSubmit}
+              disabled={isSaving}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={initialExpense ? "Save expense changes" : "Add expense"}
             >
               <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
-              <Text style={styles.submitButtonText}>Add to Daily Log</Text>
+              <Text style={styles.submitButtonText}>
+                {isSaving ? "Saving..." : initialExpense ? "Save Changes" : "Add to Daily Log"}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -315,6 +339,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  submitButtonDisabled: { opacity: 0.65 },
   submitButtonText: {
     fontSize: 16,
     fontWeight: "700",

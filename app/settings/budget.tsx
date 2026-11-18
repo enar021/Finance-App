@@ -25,6 +25,7 @@ export default function BudgetSettingsScreen() {
   const [savingsInput, setSavingsInput] = useState(
     stats.totalBank === null ? '' : stats.totalBank.toString()
   );
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setBankName(stats.bankName);
@@ -37,6 +38,7 @@ export default function BudgetSettingsScreen() {
   );
 
   const handleSave = () => {
+    if (isSaving) return;
     Keyboard.dismiss();
     const allowance = parseMoney(allowanceInput);
     const savingsBalance = parseMoney(savingsInput);
@@ -52,7 +54,9 @@ export default function BudgetSettingsScreen() {
       showAlert('Invalid savings balance', 'Enter a non-negative amount with up to two decimal places.');
       return;
     }
+    setIsSaving(true);
     saveSettings(bankName, allowance, savingsBalance);
+    setTimeout(() => setIsSaving(false), 500);
     showAlert('Saved', 'Your budget settings have been updated.');
   };
 
@@ -111,8 +115,15 @@ export default function BudgetSettingsScreen() {
               style={styles.input}
               value={savingsInput}
             />
-            <TouchableOpacity style={styles.primaryButton} onPress={handleSave} activeOpacity={0.8}>
-              <Text style={styles.primaryButtonText}>Save budget</Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, isSaving && styles.primaryButtonDisabled]}
+              onPress={handleSave}
+              disabled={isSaving}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Save budget settings"
+            >
+              <Text style={styles.primaryButtonText}>{isSaving ? 'Saving...' : 'Save budget'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -180,6 +191,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  primaryButtonDisabled: { opacity: 0.65 },
   cycleCard: { backgroundColor: THEME.colors.lilacCard, borderColor: 'rgba(196, 181, 253, 0.5)' },
   cycleHeading: { alignItems: 'center', flexDirection: 'row', gap: 9, marginBottom: 10 },
   cardTitle: { color: THEME.colors.textDark, fontSize: 16, fontWeight: '800' },

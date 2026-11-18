@@ -601,6 +601,59 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     return { ok: true };
   },
 
+  updateExpense: (id: string, title: string, amount: number, date: Date): AddExpenseResult => {
+    get().checkAndAdvanceMonth();
+    const { stats, expenses } = get();
+    const dateKey = toDateKey(date);
+
+    if (!title.trim() || !isValidAmount(amount) || amount <= 0 || !dateKey) {
+      return {
+        ok: false,
+        error: 'invalid_input',
+        message: 'Enter a name, a positive amount, and a valid date.',
+      };
+    }
+
+    const monthLabel = getMonthLabel(dateKey);
+    if (monthLabel !== stats.currentMonthLabel) {
+      return {
+        ok: false,
+        error: 'month_not_finished',
+        message: `Expenses can only be edited for the open month, ${formatMonthLabel(stats.currentMonthLabel)}.`,
+      };
+    }
+
+    const existing = expenses.find((expense) => expense.id === id);
+    if (!existing || existing.subscriptionId) {
+      return {
+        ok: false,
+        error: 'invalid_input',
+        message: 'This expense cannot be edited.',
+      };
+    }
+
+    const newExpenses = expenses.map((expense) =>
+      expense.id === id
+        ? {
+            ...expense,
+            title: title.trim(),
+            amount: roundMoney(amount),
+            date: dateKey,
+            monthLabel,
+          }
+        : expense
+    );
+    const newStats: UserStats = {
+      ...stats,
+      currentRemaining: calculateRemaining(stats, newExpenses),
+    };
+
+    set({ stats: newStats, expenses: newExpenses });
+    persistStats(newStats);
+    persistExpenses(newExpenses);
+    return { ok: true };
+  },
+
   addSubscription: (name: string, amount: number): AddSubscriptionResult => {
     const { stats, subscriptions } = get();
     const trimmedName = name.trim();

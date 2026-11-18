@@ -9,10 +9,11 @@ import { showConfirm } from '@/utils/alerts';
 interface ExpenseItemProps {
   expense: Expense;
   onDelete?: (id: string) => void;
+  onEdit?: (expense: Expense) => void;
   showDay?: boolean;
 }
 
-export default function ExpenseItem({ expense, onDelete, showDay = false }: ExpenseItemProps) {
+export default function ExpenseItem({ expense, onDelete, onEdit, showDay = false }: ExpenseItemProps) {
   const { width } = useWindowDimensions();
   const isPhone = width <= 430;
 
@@ -54,13 +55,28 @@ export default function ExpenseItem({ expense, onDelete, showDay = false }: Expe
       {!isPhone && <Text style={styles.amount}>-₱ {formatCurrency(expense.amount)}</Text>}
 
       {onDelete && (
-        <TouchableOpacity
-          onPress={confirmDelete}
-          style={styles.deleteButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="trash-outline" size={17} color={THEME.colors.indicatorRed} />
-        </TouchableOpacity>
+        <View style={styles.actions}>
+          {onEdit && (
+            <TouchableOpacity
+              onPress={() => onEdit(expense)}
+              style={styles.actionButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${expense.title}`}
+            >
+              <Ionicons name="pencil-outline" size={17} color={THEME.colors.textDark} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={confirmDelete}
+            style={styles.deleteButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${expense.title}`}
+          >
+            <Ionicons name="trash-outline" size={17} color={THEME.colors.indicatorRed} />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -118,7 +134,20 @@ const styles = StyleSheet.create({
     color: THEME.colors.indicatorRed,
     marginRight: 8,
   },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionButton: {
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
   deleteButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 36,
+    width: 36,
     padding: 4,
     backgroundColor: '#FEE2E2',
     borderRadius: 8,
