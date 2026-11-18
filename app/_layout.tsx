@@ -8,7 +8,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Tabs } from 'expo-router';
+import { router, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -40,6 +40,11 @@ function RootTabs() {
   const tabHeight = (isPhoneWeb ? 72 : 58) + bottomPadding;
 
   const [isAnimationFinished, setIsAnimationFinished] = useState(false);
+
+  const handleAcceptTerms = () => {
+    acceptTerms();
+    router.replace('/');
+  };
 
   useEffect(() => {
     loadData();
@@ -183,7 +188,7 @@ function RootTabs() {
       {isLoaded && isAnimationFinished && !hasAcceptedTerms && (
         <TermsAgreementModal
           visible
-          onAccept={acceptTerms}
+          onAccept={handleAcceptTerms}
         />
       )}
     </View>
