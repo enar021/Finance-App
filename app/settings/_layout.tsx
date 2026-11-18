@@ -13,7 +13,7 @@ function getSubpageOptions(title: string) {
         accessibilityRole="button"
         accessibilityLabel="Back to settings"
         hitSlop={8}
-        style={{ marginRight: 12 }}
+        style={{ marginLeft: 16, marginRight: 12 }}
       >
         <Ionicons name="arrow-back" size={22} color={THEME.colors.textDark} />
       </TouchableOpacity>
