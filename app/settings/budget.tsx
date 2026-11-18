@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '@/constants/theme';
 import { useFinanceStore } from '@/store/useFinanceStore';
 import { formatCurrency, formatMonthLabel } from '@/utils/dates';
+import { showAlert, showConfirm } from '@/utils/alerts';
 
 function parseMoney(value: string): number | null {
   const normalized = value.replace(/,/g, '').trim();
@@ -40,32 +41,29 @@ export default function BudgetSettingsScreen() {
     const allowance = parseMoney(allowanceInput);
     const savingsBalance = parseMoney(savingsInput);
     if (!bankName.trim()) {
-      Alert.alert('Add an account name', 'Enter the name of the account where you save money.');
+      showAlert('Add an account name', 'Enter the name of the account where you save money.');
       return;
     }
     if (allowance === null) {
-      Alert.alert('Invalid allowance', 'Enter a non-negative amount with up to two decimal places.');
+      showAlert('Invalid allowance', 'Enter a non-negative amount with up to two decimal places.');
       return;
     }
     if (savingsBalance === null) {
-      Alert.alert('Invalid savings balance', 'Enter a non-negative amount with up to two decimal places.');
+      showAlert('Invalid savings balance', 'Enter a non-negative amount with up to two decimal places.');
       return;
     }
     saveSettings(bankName, allowance, savingsBalance);
-    Alert.alert('Saved', 'Your budget settings have been updated.');
+    showAlert('Saved', 'Your budget settings have been updated.');
   };
 
   const handleRollover = () => {
     const remaining = stats.currentRemaining;
     if (!isConfigured || remaining === null || stats.baseAllowance === null) return;
     const transfer = Math.max(0, remaining);
-    Alert.alert(
+    showConfirm(
       'Start next month?',
       `This adds ₱ ${formatCurrency(transfer)} to ${stats.bankName} and opens the next monthly budget with ₱ ${formatCurrency(stats.baseAllowance)}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Start next month', onPress: endMonth },
-      ]
+      { confirmText: 'Start next month', onConfirm: endMonth }
     );
   };
 

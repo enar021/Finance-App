@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '@/constants/theme';
 import { formatCurrency } from '@/utils/dates';
+import { showAlert } from '@/utils/alerts';
 
 interface AddMoneyModalProps {
   visible: boolean;
@@ -44,7 +44,7 @@ export default function AddMoneyModal({
     if (isSaving) return;
 
     if (currentRemaining === null) {
-      Alert.alert(
+      showAlert(
         'Set up your budget first',
         'Configure your monthly allowance in Settings before adding money to your balance.'
       );
@@ -53,13 +53,13 @@ export default function AddMoneyModal({
 
     const normalized = amountInput.replace(/,/g, '').trim();
     if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
-      Alert.alert('Invalid amount', 'Enter a positive amount with up to two decimal places.');
+      showAlert('Invalid amount', 'Enter a positive amount with up to two decimal places.');
       return;
     }
 
     const parsed = Number(normalized);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid amount greater than ₱0.');
+      showAlert('Invalid amount', 'Please enter a valid amount greater than ₱0.');
       return;
     }
 
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     color: THEME.colors.textMuted,
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.6,
+    letterSpacing: 0.3,
   },
   projectionCurrent: {
     color: THEME.colors.textSecondary,
@@ -323,6 +323,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 24,
     fontWeight: '800',
+    minWidth: 0,
   },
   quickAddRow: {
     flexDirection: 'row',

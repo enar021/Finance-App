@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Alert, Keyboard, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '@/constants/theme';
 import { useFinanceStore } from '@/store/useFinanceStore';
 import { formatCurrency, formatMonthLabel } from '@/utils/dates';
+import { showAlert, showConfirm } from '@/utils/alerts';
 
 function parseMoney(value: string): number | null {
   const normalized = value.replace(/,/g, '').trim();
@@ -24,12 +25,12 @@ export default function SubscriptionsSettingsScreen() {
     Keyboard.dismiss();
     const monthlyAmount = parseMoney(amount);
     if (monthlyAmount === null || monthlyAmount <= 0) {
-      Alert.alert('Invalid amount', 'Enter a monthly amount greater than 0.');
+      showAlert('Invalid amount', 'Enter a monthly amount greater than 0.');
       return;
     }
     const result = addSubscription(name, monthlyAmount);
     if (!result.ok) {
-      Alert.alert('Cannot add subscription', result.message);
+      showAlert('Cannot add subscription', result.message);
       return;
     }
     setName('');
@@ -37,17 +38,15 @@ export default function SubscriptionsSettingsScreen() {
   };
 
   const confirmCancel = (id: string, subscriptionName: string) => {
-    Alert.alert(
+    showConfirm(
       'Cancel subscription?',
       `${subscriptionName} remains charged for the current budget month. No charges will be added from the next cycle.`,
-      [
-        { text: 'Keep subscription', style: 'cancel' },
-        {
-          text: 'Cancel subscription',
-          style: 'destructive',
-          onPress: () => cancelSubscription(id),
-        },
-      ]
+      {
+        cancelText: 'Keep subscription',
+        confirmText: 'Cancel subscription',
+        confirmStyle: 'destructive',
+        onConfirm: () => cancelSubscription(id),
+      }
     );
   };
 

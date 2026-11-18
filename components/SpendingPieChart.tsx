@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { THEME } from '@/constants/theme';
 import { formatCurrency } from '@/utils/dates';
@@ -85,6 +87,7 @@ export default function SpendingPieChart({
 
   const centerScale = useRef(new Animated.Value(0.9)).current;
   const centerOpacity = useRef(new Animated.Value(0)).current;
+  const pressLocation = useRef<{ x: number; y: number } | null>(null);
   const [fillProgress, setFillProgress] = useState(0);
 
   useEffect(() => {
@@ -138,6 +141,56 @@ export default function SpendingPieChart({
   const targetAngle = fillProgress * totalCircle;
   const hasMultiple = segments.length > 1;
   const sliceGap = hasMultiple ? 0.04 : 0;
+  const handleChartPressIn = ({ nativeEvent }: GestureResponderEvent) => {
+    pressLocation.current = {
+      x: nativeEvent.locationX,
+      y: nativeEvent.locationY,
+    };
+  };
+
+  const handleChartPress = () => {
+    const location = pressLocation.current;
+    pressLocation.current = null;
+    if (
+      !location ||
+      !Number.isFinite(location.x) ||
+      !Number.isFinite(location.y)
+    ) {
+      const firstSegment = segments[0];
+      if (firstSegment) {
+        onSelectSegment(
+          selectedKey === firstSegment.key ? null : firstSegment.key
+        );
+      }
+      return;
+    }
+
+    const x = location.x - cx;
+    const y = location.y - cy;
+    const radius = Math.hypot(x, y);
+
+    if (
+      totalAmount === 0 ||
+      radius < innerRadius - 4 ||
+      radius > outerRadius + 5
+    ) {
+      return;
+    }
+
+    const angle =
+      (Math.atan2(y, x) + Math.PI / 2 + totalCircle) % totalCircle;
+    if (angle > targetAngle) return;
+
+    let startAngle = 0;
+    for (const segment of segments) {
+      const endAngle = startAngle + (segment.percentage / 100) * totalCircle;
+      if (angle >= startAngle && angle <= endAngle) {
+        onSelectSegment(selectedKey === segment.key ? null : segment.key);
+        return;
+      }
+      startAngle = endAngle;
+    }
+  };
 
   let accumulatedAngle = 0;
   let currentStartAngle = -Math.PI / 2;
@@ -189,8 +242,20 @@ export default function SpendingPieChart({
 
   return (
     <View style={styles.container}>
-      <View style={[styles.chartWrapper, { width: responsiveSize, height: responsiveSize }]}>
-        <Svg width={responsiveSize} height={responsiveSize} viewBox={`0 0 ${responsiveSize} ${responsiveSize}`}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Spending category chart"
+        accessibilityHint="Tap a slice to inspect that category."
+        onPressIn={handleChartPressIn}
+        onPress={handleChartPress}
+        style={[styles.chartWrapper, { width: responsiveSize, height: responsiveSize }]}
+      >
+        <Svg
+          width={responsiveSize}
+          height={responsiveSize}
+          viewBox={`0 0 ${responsiveSize} ${responsiveSize}`}
+          pointerEvents="none"
+        >
           {totalAmount === 0 ? (
             <Circle
               cx={cx}
@@ -208,9 +273,6 @@ export default function SpendingPieChart({
                   d={slice.pathD}
                   fill={slice.color}
                   opacity={selectedKey && !slice.isSelected ? 0.45 : 1}
-                  onPress={() => {
-                    onSelectSegment(selectedKey === slice.key ? null : slice.key);
-                  }}
                 />
               ))}
             </G>
@@ -269,7 +331,7 @@ export default function SpendingPieChart({
             )}
           </TouchableOpacity>
         </Animated.View>
-      </View>
+      </Pressable>
     </View>
   );
 }

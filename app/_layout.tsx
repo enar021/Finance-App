@@ -27,7 +27,7 @@ function RootTabs() {
   const isWeb = Platform.OS === 'web';
   const isPhoneWeb = isWeb && width <= 430;
   const bottomPadding = Math.max(insets.bottom, isPhoneWeb ? 8 : isWeb ? 26 : 12);
-  const tabHeight = 58 + bottomPadding;
+  const tabHeight = (isPhoneWeb ? 72 : 58) + bottomPadding;
 
   const [isAnimationFinished, setIsAnimationFinished] = useState(false);
 

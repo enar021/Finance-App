@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
@@ -72,6 +74,7 @@ export default function SavingsHistoryModal({
   const { width: windowWidth } = useWindowDimensions();
   const maxContentWidth = Math.min(windowWidth - 40, 480);
   const graphWidth = Math.max(220, maxContentWidth - 40);
+  const vaultAmountFontSize = Math.min(38, windowWidth / 10);
   const graphHeight = 150;
   const padX = 24;
   const padY = 24;
@@ -121,6 +124,23 @@ export default function SavingsHistoryModal({
     selectedPointIndex !== null && pointCoords[selectedPointIndex]
       ? pointCoords[selectedPointIndex]
       : pointCoords[pointCoords.length - 1];
+  const handleGraphPress = ({ nativeEvent }: GestureResponderEvent) => {
+    const hitRadius = 24;
+    let closestIndex = -1;
+    let closestDistance = hitRadius * hitRadius;
+
+    pointCoords.forEach((point, index) => {
+      const x = nativeEvent.locationX - point.x;
+      const y = nativeEvent.locationY - point.y;
+      const distance = x * x + y * y;
+      if (distance <= closestDistance) {
+        closestIndex = index;
+        closestDistance = distance;
+      }
+    });
+
+    if (closestIndex >= 0) setSelectedPointIndex(closestIndex);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
@@ -150,7 +170,11 @@ export default function SavingsHistoryModal({
             </View>
 
             <Text style={styles.vaultLabel}>TOTAL SAVINGS BALANCE</Text>
-            <Text style={styles.vaultAmount} numberOfLines={1} adjustsFontSizeToFit>
+            <Text
+              style={[styles.vaultAmount, { fontSize: vaultAmountFontSize }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               ₱ {formatCurrency(totalSavings)}
             </Text>
 
@@ -185,8 +209,14 @@ export default function SavingsHistoryModal({
               </View>
             </View>
 
-            <View style={styles.svgWrapper}>
-              <Svg width={graphWidth} height={graphHeight}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Savings growth chart"
+              accessibilityHint="Tap near a data point to inspect its balance."
+              onPress={handleGraphPress}
+              style={[styles.svgWrapper, { width: graphWidth, height: graphHeight }]}
+            >
+              <Svg width={graphWidth} height={graphHeight} pointerEvents="none">
                 <Defs>
                   <LinearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
                     <Stop offset="0" stopColor="#10B981" stopOpacity="0.35" />
@@ -232,12 +262,11 @@ export default function SavingsHistoryModal({
                       fill="#FFFFFF"
                       stroke="#059669"
                       strokeWidth={isSelected ? 3 : 2}
-                      onPress={() => setSelectedPointIndex(idx)}
                     />
                   );
                 })}
               </Svg>
-            </View>
+            </Pressable>
 
             {/* X-Axis Month Labels */}
             <View style={styles.xAxisRow}>

@@ -19,9 +19,11 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { isNarrow } from "@/utils/responsive";
 
 type FilterType = "current" | "previous" | "custom";
 
@@ -44,6 +46,8 @@ function roundMoney(value: number): number {
 
 export default function HistoryScreen() {
   const { expenses, stats, savingsHistory, checkAndAdvanceMonth } = useFinanceStore();
+  const { width } = useWindowDimensions();
+  const narrowPhone = isNarrow(width);
   const [filterType, setFilterType] = useState<FilterType>("current");
   const [customMonth, setCustomMonth] = useState<string>("all");
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -293,11 +297,7 @@ export default function HistoryScreen() {
           <Text style={styles.subtitle}>{filterDescription}</Text>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterBar}
-        >
+        <View style={styles.filterBar}>
           <TouchableOpacity
             style={[
               styles.filterPill,
@@ -369,7 +369,7 @@ export default function HistoryScreen() {
               Custom
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
 
         {filterType === "custom" && (
           <TouchableOpacity
@@ -410,14 +410,25 @@ export default function HistoryScreen() {
             ]}
           >
             <View style={styles.utilizationHeader}>
-              <View style={{ flex: 1, marginRight: 10 }}>
+              <View style={{ flex: 1, marginRight: 10, minWidth: 0 }}>
                 <Text style={styles.utilizationLabel}>BUDGET UTILIZATION</Text>
-                <Text style={styles.utilizationSpent} numberOfLines={1} adjustsFontSizeToFit>
+                <Text
+                  style={[styles.utilizationSpent, narrowPhone && styles.utilizationSpentCompact]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   ₱ {formatCurrency(totalSpent)}{" "}
+                  {!narrowPhone && (
+                    <Text style={styles.utilizationTotal}>
+                      / ₱ {formatCurrency(periodAllowance)}
+                    </Text>
+                  )}
+                </Text>
+                {narrowPhone && (
                   <Text style={styles.utilizationTotal}>
                     / ₱ {formatCurrency(periodAllowance)}
                   </Text>
-                </Text>
+                )}
               </View>
               <Animated.View
                 style={[
@@ -446,7 +457,12 @@ export default function HistoryScreen() {
               />
             </View>
 
-            <View style={styles.utilizationFooter}>
+            <View
+              style={[
+                styles.utilizationFooter,
+                narrowPhone && styles.utilizationFooterCompact,
+              ]}
+            >
               <Text style={styles.utilizationFooterText}>
                 {remainingAllowance !== null && remainingAllowance >= 0
                   ? `₱ ${formatCurrency(remainingAllowance)} remaining`
@@ -759,8 +775,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   filterBar: {
+    flexWrap: "wrap",
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
   },
   filterPill: {
     alignItems: "center",
@@ -770,7 +787,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 5,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 9,
   },
   filterPillActive: {
@@ -835,6 +852,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 4,
   },
+  utilizationSpentCompact: { fontSize: 20 },
   utilizationTotal: {
     color: THEME.colors.textSecondary,
     fontSize: 15,
@@ -868,6 +886,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  utilizationFooterCompact: { flexDirection: "column", gap: 4 },
   utilizationFooterText: {
     color: THEME.colors.textDark,
     fontSize: 13,

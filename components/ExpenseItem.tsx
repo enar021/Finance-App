@@ -1,9 +1,10 @@
 import React from 'react';
-import { Alert, Platform, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Expense } from '@/types';
 import { formatDateShort, formatCurrency, getDayName } from '@/utils/dates';
 import { THEME } from '@/constants/theme';
+import { showConfirm } from '@/utils/alerts';
 
 interface ExpenseItemProps {
   expense: Expense;
@@ -12,19 +13,20 @@ interface ExpenseItemProps {
 }
 
 export default function ExpenseItem({ expense, onDelete, showDay = false }: ExpenseItemProps) {
+  const { width } = useWindowDimensions();
+  const isPhone = width <= 430;
+
   const confirmDelete = () => {
     if (!onDelete) return;
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Remove ${expense.title} from your ledger?`)) {
-        onDelete(expense.id);
+    showConfirm(
+      'Delete expense?',
+      `Remove ${expense.title} from your ledger?`,
+      {
+        confirmText: 'Delete',
+        confirmStyle: 'destructive',
+        onConfirm: () => onDelete(expense.id),
       }
-      return;
-    }
-
-    Alert.alert('Delete expense?', `Remove ${expense.title} from your ledger?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => onDelete(expense.id) },
-    ]);
+    );
   };
 
   return (
@@ -38,7 +40,7 @@ export default function ExpenseItem({ expense, onDelete, showDay = false }: Expe
       </View>
 
       <View style={styles.details}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={styles.title} numberOfLines={isPhone ? 2 : 1}>
           {expense.title}
         </Text>
         <Text style={styles.meta}>
@@ -46,9 +48,10 @@ export default function ExpenseItem({ expense, onDelete, showDay = false }: Expe
           {showDay ? `${getDayName(expense.date)}, ` : ''}
           {formatDateShort(expense.date)}
         </Text>
+        {isPhone && <Text style={styles.phoneAmount}>-₱ {formatCurrency(expense.amount)}</Text>}
       </View>
 
-      <Text style={styles.amount}>-₱ {formatCurrency(expense.amount)}</Text>
+      {!isPhone && <Text style={styles.amount}>-₱ {formatCurrency(expense.amount)}</Text>}
 
       {onDelete && (
         <TouchableOpacity
@@ -102,6 +105,12 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     marginTop: 2,
     fontWeight: '500',
+  },
+  phoneAmount: {
+    color: THEME.colors.indicatorRed,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 3,
   },
   amount: {
     fontSize: 15,

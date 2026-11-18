@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { THEME } from '@/constants/theme';
@@ -12,6 +12,7 @@ import {
   setNotificationsEnabled,
   type NotificationPermissionStatus,
 } from '@/utils/notifications';
+import { showAlert } from '@/utils/alerts';
 
 export default function NotificationSettingsScreen() {
   const [enabled, setEnabled] = useState(true);
@@ -40,9 +41,9 @@ export default function NotificationSettingsScreen() {
     const status = await requestNotificationPermission();
     setPermission(status);
     if (status === 'granted') {
-      Alert.alert('Reminders active', 'Daily reminders are scheduled for 1:00 PM and 8:30 PM.');
+      showAlert('Reminders active', 'Daily reminders are scheduled for 1:00 PM and 8:30 PM.');
     } else if (status === 'denied') {
-      Alert.alert(
+      showAlert(
         'Permission blocked',
         `Allow notifications for Penny Wise in ${Platform.OS === 'web' ? 'your browser site settings' : 'your device app settings'}.`
       );
@@ -53,16 +54,16 @@ export default function NotificationSettingsScreen() {
     const result = await sendTestReminder();
     setPermission(result.status);
     if (result.ok) {
-      Alert.alert(
+      showAlert(
         'Test sent',
         Platform.OS === 'web'
           ? 'The browser accepted the notification. Your browser and device settings control whether web notifications show as banners or play a sound.'
           : 'Check your notification banner.'
       );
     } else if (result.status === 'denied') {
-      Alert.alert('Permission blocked', 'Allow notifications in your device or browser settings.');
+      showAlert('Permission blocked', 'Allow notifications in your device or browser settings.');
     } else if (result.status === 'unsupported') {
-      Alert.alert(
+      showAlert(
         'Notifications unavailable',
         Platform.OS === 'web'
           ? 'Web notifications require a supported browser or installed web app.'

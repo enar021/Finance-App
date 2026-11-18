@@ -9,7 +9,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,6 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { showAlert } from "@/utils/alerts";
 
 interface ExpenseFormProps {
   onSubmit: (title: string, amount: number, date: Date) => void;
@@ -51,7 +51,7 @@ export default function ExpenseForm({
   const handleSubmit = () => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      Alert.alert(
+      showAlert(
         "Missing Name",
         "Please enter an expense name (e.g. Groceries, Lunch).",
       );
@@ -60,7 +60,7 @@ export default function ExpenseForm({
 
     const normalizedAmount = amount.replace(/,/g, "").trim();
     if (!/^\d+(\.\d{1,2})?$/.test(normalizedAmount)) {
-      Alert.alert(
+      showAlert(
         "Invalid Amount",
         "Enter a positive amount with up to two decimal places.",
       );
@@ -68,7 +68,7 @@ export default function ExpenseForm({
     }
     const parsedAmount = Number(normalizedAmount);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert(
+      showAlert(
         "Invalid Amount",
         "Enter a positive amount with up to two decimal places.",
       );
@@ -77,7 +77,7 @@ export default function ExpenseForm({
 
     const parsedDate = parseDateKey(dateStr);
     if (!parsedDate) {
-      Alert.alert("Invalid Date", "Enter a real date in YYYY-MM-DD format.");
+      showAlert("Invalid Date", "Enter a real date in YYYY-MM-DD format.");
       return;
     }
 
@@ -87,7 +87,7 @@ export default function ExpenseForm({
     ) {
       const selectedMonth = getMonthLabel(parsedDate);
       const isPastMonth = isAfterMonth(currentMonthLabel, selectedMonth);
-      Alert.alert(
+      showAlert(
         isPastMonth ? "This month has already ended" : "Month has not started",
         `Only ${formatMonthLabel(currentMonthLabel)} is editable. You cannot log expenses for ${formatMonthLabel(selectedMonth)}.`,
       );

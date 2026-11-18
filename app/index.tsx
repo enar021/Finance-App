@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Modal,
   ScrollView,
@@ -33,6 +32,7 @@ import {
   parseDateKey,
 } from '@/utils/dates';
 import { isNarrow } from '@/utils/responsive';
+import { showAlert } from '@/utils/alerts';
 
 type DashboardView = 'day' | 'weeks';
 
@@ -382,7 +382,7 @@ export default function Dashboard() {
             onAdd={(amount, note) => {
               const result = addMoney(amount, note);
               if (!result.ok && result.message) {
-                Alert.alert('Cannot add money', result.message);
+                showAlert('Cannot add money', result.message);
                 return false;
               }
               setShowAddMoney(false);
@@ -589,7 +589,7 @@ export default function Dashboard() {
             onSubmit={(title, amount, date) => {
               const result = addExpense(title, amount, date);
               if (!result.ok) {
-                Alert.alert('Cannot add expense', result.message);
+                showAlert('Cannot add expense', result.message);
                 return;
               }
               setShowAddExpense(false);
@@ -606,7 +606,7 @@ export default function Dashboard() {
           onAdd={(amount, note) => {
             const result = addMoney(amount, note);
             if (!result.ok && result.message) {
-              Alert.alert('Cannot add money', result.message);
+              showAlert('Cannot add money', result.message);
               return false;
             }
             setShowAddMoney(false);
