@@ -195,6 +195,10 @@ export default function Dashboard() {
   const dayCardWidth = screenWidth - 40;
   const narrow = isNarrow(screenWidth);
 
+  const handleDeleteExpense = (id: string) => {
+    deleteExpense(id);
+  };
+
   const baseAllowance = stats.baseAllowance;
   const currentRemaining = stats.currentRemaining;
   const totalBank = stats.totalBank;
@@ -632,7 +636,7 @@ export default function Dashboard() {
                         <ExpenseItem
                           key={expense.id}
                           expense={expense}
-                          onDelete={expense.subscriptionId ? undefined : deleteExpense}
+                          onDelete={expense.subscriptionId ? undefined : handleDeleteExpense}
                           onEdit={
                             expense.subscriptionId
                               ? undefined

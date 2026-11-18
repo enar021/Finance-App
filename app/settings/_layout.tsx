@@ -35,7 +35,8 @@ export default function SettingsLayout() {
       <Stack.Screen name="budget" options={getSubpageOptions('Budget & cycle')} />
       <Stack.Screen name="subscriptions" options={getSubpageOptions('Subscriptions')} />
       <Stack.Screen name="notifications" options={getSubpageOptions('Notifications')} />
-      <Stack.Screen name="about" options={getSubpageOptions('Privacy & About')} />
+      <Stack.Screen name="about" options={getSubpageOptions('Privacy & Terms')} />
+      <Stack.Screen name="data" options={getSubpageOptions('Data & Backup')} />
     </Stack>
   );
 }

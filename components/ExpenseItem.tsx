@@ -21,8 +21,9 @@ export default function ExpenseItem({ expense, onDelete, onEdit, showDay = false
     if (!onDelete) return;
     showConfirm(
       'Delete expense?',
-      `Remove ${expense.title} from your ledger?`,
+      `Are you sure you want to delete "${expense.title}"? This cannot be undone.`,
       {
+        cancelText: 'Keep expense',
         confirmText: 'Delete',
         confirmStyle: 'destructive',
         onConfirm: () => onDelete(expense.id),

@@ -9,6 +9,9 @@ import type {
   ExtraMoneyRecord,
   Subscription,
   AddSubscriptionResult,
+  FinanceBackup,
+  SubscriptionChange,
+  SubscriptionPaymentOverride,
 } from '@/types';
 import {
   formatMonthLabel,
@@ -25,6 +28,7 @@ const EXPENSES_KEY = '@pocketledger_expenses_v2';
 const SAVINGS_HISTORY_KEY = '@pocketledger_savings_history_v2';
 const SUBSCRIPTIONS_KEY = '@pennywise_subscriptions_v1';
 const TERMS_KEY = '@pennywise_terms_accepted_v1';
+const BACKUP_CONSENT_KEY = '@pennywise_backup_consent_v1';
 
 const DEFAULT_STATS: UserStats = {
   bankName: '',
@@ -84,31 +88,70 @@ function applySubscriptionExpenses(
   expenses: Expense[],
   monthLabel: string
 ): Expense[] {
-  const existing = new Set(
-    expenses
-      .filter((expense) => expense.subscriptionId)
-      .map((expense) => `${expense.subscriptionId}:${expense.monthLabel}`)
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) =>
+      subscription.startMonth <= monthLabel &&
+      (!subscription.cancelledFromMonth || monthLabel < subscription.cancelledFromMonth)
   );
-  const recurringExpenses = subscriptions
-    .filter(
-      (subscription) =>
-        subscription.startMonth <= monthLabel &&
-        (!subscription.cancelledFromMonth ||
-          monthLabel < subscription.cancelledFromMonth) &&
-        !existing.has(`${subscription.id}:${monthLabel}`)
-    )
-    .map(
-      (subscription): Expense => ({
-        id: `sub_${subscription.id}_${monthLabel}`,
-        title: subscription.name,
-        amount: subscription.amount,
-        date: `${monthLabel}-01`,
-        monthLabel,
-        subscriptionId: subscription.id,
-      })
+  const shouldKeepExpense = (expense: Expense) => {
+    if (!expense.subscriptionId || expense.monthLabel !== monthLabel) return true;
+    const subscription = activeSubscriptions.find(
+      (item) => item.id === expense.subscriptionId
     );
+    const override = subscription?.paymentOverrides?.find(
+      (item) => item.monthLabel === monthLabel
+    );
+    return Boolean(subscription && !override?.skipped);
+  };
+  let updatedExpenses = expenses;
+  if (expenses.some((expense) => !shouldKeepExpense(expense))) {
+    updatedExpenses = expenses.filter(shouldKeepExpense);
+  }
 
-  return recurringExpenses.length > 0 ? [...recurringExpenses, ...expenses] : expenses;
+  activeSubscriptions.forEach((subscription) => {
+    const change = [...(subscription.changes ?? [])]
+      .filter((item) => item.effectiveMonth <= monthLabel)
+      .sort((a, b) => a.effectiveMonth.localeCompare(b.effectiveMonth))
+      .at(-1);
+    const override = subscription.paymentOverrides?.find(
+      (item) => item.monthLabel === monthLabel
+    );
+    if (override?.skipped) return;
+
+    const existingIndex = updatedExpenses.findIndex(
+      (expense) =>
+        expense.subscriptionId === subscription.id && expense.monthLabel === monthLabel
+    );
+    const recurringExpense: Expense = {
+      id: existingIndex >= 0
+        ? updatedExpenses[existingIndex].id
+        : `sub_${subscription.id}_${monthLabel}`,
+      title: change?.name ?? subscription.name,
+      amount: override?.amount ?? change?.amount ?? subscription.amount,
+      date: existingIndex >= 0
+        ? updatedExpenses[existingIndex].date
+        : `${monthLabel}-01`,
+      monthLabel,
+      subscriptionId: subscription.id,
+    };
+
+    if (existingIndex >= 0) {
+      const existingExpense = updatedExpenses[existingIndex];
+      if (
+        existingExpense.title !== recurringExpense.title ||
+        existingExpense.amount !== recurringExpense.amount ||
+        existingExpense.date !== recurringExpense.date
+      ) {
+        if (updatedExpenses === expenses) updatedExpenses = [...expenses];
+        updatedExpenses[existingIndex] = recurringExpense;
+      }
+    } else {
+      if (updatedExpenses === expenses) updatedExpenses = [...expenses];
+      updatedExpenses.unshift(recurringExpense);
+    }
+  });
+
+  return updatedExpenses;
 }
 
 function advanceMonthsIfNeeded(
@@ -269,7 +312,25 @@ function normalizeSubscription(value: unknown): Subscription | null {
     item.amount <= 0 ||
     !isValidMonthLabel(item.startMonth) ||
     (item.cancelledFromMonth !== undefined &&
-      !isValidMonthLabel(item.cancelledFromMonth))
+      !isValidMonthLabel(item.cancelledFromMonth)) ||
+    (item.changes !== undefined && !Array.isArray(item.changes)) ||
+    (item.paymentOverrides !== undefined && !Array.isArray(item.paymentOverrides))
+  ) {
+    return null;
+  }
+
+  const changes = (item.changes ?? [])
+    .map(normalizeSubscriptionChange)
+    .filter((change): change is SubscriptionChange => change !== null);
+  const paymentOverrides = (item.paymentOverrides ?? [])
+    .map(normalizeSubscriptionPaymentOverride)
+    .filter((override): override is SubscriptionPaymentOverride => override !== null);
+  if (
+    changes.length !== (item.changes ?? []).length ||
+    paymentOverrides.length !== (item.paymentOverrides ?? []).length ||
+    new Set(changes.map((change) => change.effectiveMonth)).size !== changes.length ||
+    new Set(paymentOverrides.map((override) => override.monthLabel)).size !==
+      paymentOverrides.length
   ) {
     return null;
   }
@@ -280,56 +341,215 @@ function normalizeSubscription(value: unknown): Subscription | null {
     amount: roundMoney(item.amount),
     startMonth: item.startMonth,
     cancelledFromMonth: item.cancelledFromMonth,
+    changes,
+    paymentOverrides,
   };
 }
 
-async function persistStats(stats: UserStats): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
-  } catch (error) {
-    console.error('Failed to save stats to local storage:', error);
+function normalizeSubscriptionChange(value: unknown): SubscriptionChange | null {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !isValidMonthLabel((value as SubscriptionChange).effectiveMonth) ||
+    typeof (value as SubscriptionChange).name !== 'string' ||
+    !(value as SubscriptionChange).name.trim() ||
+    !isValidAmount((value as SubscriptionChange).amount) ||
+    (value as SubscriptionChange).amount <= 0
+  ) {
+    return null;
   }
+  const item = value as SubscriptionChange;
+  return {
+    effectiveMonth: item.effectiveMonth,
+    name: item.name.trim(),
+    amount: roundMoney(item.amount),
+  };
 }
 
-async function persistExpenses(expenses: Expense[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-  } catch (error) {
-    console.error('Failed to save expenses to local storage:', error);
+function normalizeSubscriptionPaymentOverride(
+  value: unknown
+): SubscriptionPaymentOverride | null {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !isValidMonthLabel((value as SubscriptionPaymentOverride).monthLabel) ||
+    typeof (value as SubscriptionPaymentOverride).skipped !== 'boolean' ||
+    ((value as SubscriptionPaymentOverride).amount !== undefined &&
+      (!isValidAmount((value as SubscriptionPaymentOverride).amount) ||
+        (value as SubscriptionPaymentOverride).skipped))
+  ) {
+    return null;
   }
+  const item = value as SubscriptionPaymentOverride;
+  return {
+    monthLabel: item.monthLabel,
+    skipped: item.skipped,
+    amount: item.amount === undefined ? undefined : roundMoney(item.amount),
+  };
 }
 
-async function persistSavingsHistory(history: SavingsRecord[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(SAVINGS_HISTORY_KEY, JSON.stringify(history));
-  } catch (error) {
-    console.error('Failed to save savings history to local storage:', error);
-  }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-async function persistSubscriptions(subscriptions: Subscription[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(SUBSCRIPTIONS_KEY, JSON.stringify(subscriptions));
-  } catch (error) {
-    console.error('Failed to save subscriptions to local storage:', error);
+function normalizeBackup(value: unknown): {
+  stats: UserStats;
+  expenses: Expense[];
+  savingsHistory: SavingsRecord[];
+  subscriptions: Subscription[];
+} | null {
+  if (
+    !isRecord(value) ||
+    value.app !== 'penny-wise' ||
+    value.version !== 1 ||
+    typeof value.exportedAt !== 'string' ||
+    !Number.isFinite(Date.parse(value.exportedAt)) ||
+    !isRecord(value.data)
+  ) {
+    return null;
   }
+
+  const { stats: rawStats, expenses: rawExpenses, savingsHistory: rawHistory, subscriptions: rawSubscriptions } =
+    value.data;
+  if (
+    !isRecord(rawStats) ||
+    typeof rawStats.bankName !== 'string' ||
+    (rawStats.baseAllowance !== null && !isValidAmount(rawStats.baseAllowance)) ||
+    (rawStats.totalBank !== null && !isValidAmount(rawStats.totalBank)) ||
+    !isValidMonthLabel(rawStats.currentMonthLabel) ||
+    !Array.isArray(rawExpenses) ||
+    !Array.isArray(rawHistory) ||
+    !Array.isArray(rawSubscriptions) ||
+    (rawStats.extraAllowance !== undefined && !isValidAmount(rawStats.extraAllowance)) ||
+    (rawStats.rolloverInProgressFromMonth !== undefined &&
+      !isValidMonthLabel(rawStats.rolloverInProgressFromMonth)) ||
+    (rawStats.extraMoneyHistory !== undefined && !Array.isArray(rawStats.extraMoneyHistory))
+  ) {
+    return null;
+  }
+
+  const rolloverMonth = rawStats.rolloverInProgressFromMonth as string | undefined;
+  if (
+    isAfterMonth(rawStats.currentMonthLabel, getMonthLabel()) &&
+    (!rolloverMonth || getNextMonthLabel(rolloverMonth) !== rawStats.currentMonthLabel)
+  ) {
+    return null;
+  }
+
+  const expenses = rawExpenses
+    .map(normalizeExpense)
+    .filter((expense): expense is Expense => expense !== null);
+  const savingsHistory = rawHistory
+    .map(normalizeSavingsRecord)
+    .filter((record): record is SavingsRecord => record !== null);
+  const subscriptions = rawSubscriptions
+    .map(normalizeSubscription)
+    .filter((subscription): subscription is Subscription => subscription !== null);
+  const extraMoneyHistory = (rawStats.extraMoneyHistory ?? [])
+    .map(normalizeExtraMoneyRecord)
+    .filter((record): record is ExtraMoneyRecord => record !== null);
+
+  if (
+    expenses.length !== rawExpenses.length ||
+    savingsHistory.length !== rawHistory.length ||
+    subscriptions.length !== rawSubscriptions.length ||
+    extraMoneyHistory.length !== (rawStats.extraMoneyHistory ?? []).length
+  ) {
+    return null;
+  }
+
+  const hasUniqueIds = <T extends { id: string }>(items: T[]) =>
+    new Set(items.map((item) => item.id)).size === items.length;
+  if (
+    !hasUniqueIds(expenses) ||
+    !hasUniqueIds(savingsHistory) ||
+    !hasUniqueIds(subscriptions) ||
+    !hasUniqueIds(extraMoneyHistory)
+  ) {
+    return null;
+  }
+
+  const stats: UserStats = {
+    bankName: rawStats.bankName.trim(),
+    baseAllowance:
+      rawStats.baseAllowance === null ? null : roundMoney(rawStats.baseAllowance as number),
+    extraAllowance:
+      rawStats.extraAllowance === undefined ? 0 : roundMoney(rawStats.extraAllowance as number),
+    extraMoneyHistory,
+    rolloverInProgressFromMonth: rolloverMonth,
+    currentRemaining: null,
+    totalBank: rawStats.totalBank === null ? null : roundMoney(rawStats.totalBank as number),
+    currentMonthLabel: rawStats.currentMonthLabel,
+  };
+
+  return { stats, expenses, savingsHistory, subscriptions };
 }
 
-export const useFinanceStore = create<FinanceState>((set, get) => ({
+export const useFinanceStore = create<FinanceState>((set, get) => {
+  let writeQueue: Promise<void> = Promise.resolve();
+  let writeRevision = 0;
+
+  const persistEntries = async (
+    entries: [string, string][],
+    label: string
+  ): Promise<boolean> => {
+    const revision = ++writeRevision;
+    set({ saveStatus: 'saving' });
+    const write = writeQueue.then(() => AsyncStorage.multiSet(entries));
+    writeQueue = write.then(
+      () => undefined,
+      () => undefined
+    );
+
+    try {
+      await write;
+      if (revision === writeRevision) set({ saveStatus: 'saved' });
+      return true;
+    } catch (error) {
+      console.error(`Failed to save ${label} to local storage:`, error);
+      if (revision === writeRevision) set({ saveStatus: 'error' });
+      return false;
+    }
+  };
+
+  const persistCurrentData = (): void => {
+    const { stats, expenses, savingsHistory, subscriptions } = get();
+    void persistEntries(
+      [
+        [STATS_KEY, JSON.stringify(stats)],
+        [EXPENSES_KEY, JSON.stringify(expenses)],
+        [SAVINGS_HISTORY_KEY, JSON.stringify(savingsHistory)],
+        [SUBSCRIPTIONS_KEY, JSON.stringify(subscriptions)],
+      ],
+      'finance data'
+    );
+  };
+
+  return ({
   stats: DEFAULT_STATS,
   expenses: [],
   savingsHistory: [],
   subscriptions: [],
   isLoaded: false,
   hasAcceptedTerms: false,
+  hasConfirmedBackupConsent: false,
+  saveStatus: 'idle',
 
   loadData: async () => {
-    const [statsRes, expensesRes, savingsHistoryRes, subscriptionsRes, termsRes] = await Promise.allSettled([
+    const [
+      statsRes,
+      expensesRes,
+      savingsHistoryRes,
+      subscriptionsRes,
+      termsRes,
+      backupConsentRes,
+    ] = await Promise.allSettled([
       AsyncStorage.getItem(STATS_KEY),
       AsyncStorage.getItem(EXPENSES_KEY),
       AsyncStorage.getItem(SAVINGS_HISTORY_KEY),
       AsyncStorage.getItem(SUBSCRIPTIONS_KEY),
       AsyncStorage.getItem(TERMS_KEY),
+      AsyncStorage.getItem(BACKUP_CONSENT_KEY),
     ]);
 
     const statsRaw = statsRes.status === 'fulfilled' ? statsRes.value : null;
@@ -354,6 +574,9 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }
     if (termsRes.status === 'rejected') {
       console.error('Failed to read terms key:', termsRes.reason);
+    }
+    if (backupConsentRes.status === 'rejected') {
+      console.error('Failed to read backup consent key:', backupConsentRes.reason);
     }
 
     const parsedStats = safeParseJSON<unknown>(statsRaw, null, STATS_KEY);
@@ -428,35 +651,118 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
           : getMonthLabel(),
     };
 
+    const shouldClearRollover =
+      Boolean(stats.rolloverInProgressFromMonth) &&
+      stats.currentMonthLabel === getMonthLabel();
     const advanced = advanceMonthsIfNeeded(stats, expenses, savingsHistory, subscriptions);
     expenses = advanced.expenses;
+    let shouldPersist = false;
     if (advanced.changed) {
       stats = advanced.stats;
       savingsHistory = advanced.history;
       if (stats.currentMonthLabel === getMonthLabel()) {
         stats = { ...stats, rolloverInProgressFromMonth: undefined };
       }
-      persistStats(stats);
-      persistSavingsHistory(savingsHistory);
-      persistExpenses(expenses);
+      shouldPersist = true;
     } else {
-      if (
-        stats.rolloverInProgressFromMonth &&
-        stats.currentMonthLabel === getMonthLabel()
-      ) {
-        stats = { ...stats, rolloverInProgressFromMonth: undefined };
-        persistStats(stats);
+      if (shouldClearRollover) {
+        shouldPersist = true;
       }
       stats = advanced.stats;
+      if (shouldClearRollover) {
+        stats = { ...stats, rolloverInProgressFromMonth: undefined };
+      }
       stats.currentRemaining = calculateRemaining(stats, expenses);
       if (expenses.length !== loadedExpenseCount) {
-        persistExpenses(expenses);
+        shouldPersist = true;
       }
     }
 
     const hasAcceptedTerms = termsRaw === 'true' || Boolean(storedStats?.bankName);
+    const hasConfirmedBackupConsent =
+      backupConsentRes.status === 'fulfilled' && backupConsentRes.value === 'true';
 
-    set({ stats, expenses, savingsHistory, subscriptions, hasAcceptedTerms, isLoaded: true });
+    set({
+      stats,
+      expenses,
+      savingsHistory,
+      subscriptions,
+      hasAcceptedTerms,
+      hasConfirmedBackupConsent,
+      isLoaded: true,
+    });
+    if (shouldPersist) persistCurrentData();
+  },
+
+  clearSaveStatus: () => {
+    if (get().saveStatus === 'saved') set({ saveStatus: 'idle' });
+  },
+
+  confirmBackupConsent: async () => {
+    try {
+      await AsyncStorage.setItem(BACKUP_CONSENT_KEY, 'true');
+      set({ hasConfirmedBackupConsent: true });
+      return true;
+    } catch (error) {
+      console.error('Failed to save backup consent:', error);
+      return false;
+    }
+  },
+
+  createBackup: () => {
+    get().checkAndAdvanceMonth();
+    const { stats, expenses, savingsHistory, subscriptions } = get();
+    return {
+      app: 'penny-wise',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: { stats, expenses, savingsHistory, subscriptions },
+    };
+  },
+
+  restoreBackup: async (backup: unknown) => {
+    const restored = normalizeBackup(backup);
+    if (!restored) {
+      return {
+        ok: false,
+        message: 'This file is not a valid Penny Wise backup or contains invalid ledger data.',
+      };
+    }
+
+    const advanced = advanceMonthsIfNeeded(
+      restored.stats,
+      restored.expenses,
+      restored.savingsHistory,
+      restored.subscriptions
+    );
+    const stats = {
+      ...advanced.stats,
+      currentRemaining: calculateRemaining(advanced.stats, advanced.expenses),
+    };
+    const values: [string, string][] = [
+      [STATS_KEY, JSON.stringify(stats)],
+      [EXPENSES_KEY, JSON.stringify(advanced.expenses)],
+      [SAVINGS_HISTORY_KEY, JSON.stringify(advanced.history)],
+      [SUBSCRIPTIONS_KEY, JSON.stringify(restored.subscriptions)],
+    ];
+
+    const saved = await persistEntries(values, 'ledger backup');
+    if (!saved) {
+      return {
+        ok: false,
+        message: 'Could not save the restored ledger. Your current data was not replaced.',
+      };
+    }
+
+    set({
+      stats,
+      expenses: advanced.expenses,
+      savingsHistory: advanced.history,
+      subscriptions: restored.subscriptions,
+      hasAcceptedTerms: get().hasAcceptedTerms || Boolean(stats.bankName),
+      isLoaded: true,
+    });
+    return { ok: true, message: 'Your backup has been restored.' };
   },
 
   acceptTerms: () => {
@@ -474,7 +780,6 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       if (checkedStats.currentMonthLabel === getMonthLabel()) {
         checkedStats = { ...checkedStats, rolloverInProgressFromMonth: undefined };
       }
-      persistSavingsHistory(advanced.history);
     }
     if (
       checkedStats.rolloverInProgressFromMonth &&
@@ -494,8 +799,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         expenses: advanced.expenses,
         savingsHistory: advanced.history,
       });
-      if (statsChanged || advanced.changed) persistStats(checkedStats);
-      if (expensesChanged) persistExpenses(advanced.expenses);
+      persistCurrentData();
     }
     return advanced.changed;
   },
@@ -515,7 +819,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     newStats.currentRemaining = calculateRemaining(newStats, expenses);
 
     set({ stats: newStats });
-    persistStats(newStats);
+    persistCurrentData();
   },
 
   addMoney: (amount: number, note?: string) => {
@@ -548,7 +852,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     newStats.currentRemaining = calculateRemaining(newStats, expenses);
 
     set({ stats: newStats });
-    persistStats(newStats);
+    persistCurrentData();
     return { ok: true };
   },
 
@@ -596,8 +900,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     newStats.currentRemaining = calculateRemaining(newStats, newExpenses);
 
     set({ stats: newStats, expenses: newExpenses });
-    persistStats(newStats);
-    persistExpenses(newExpenses);
+    persistCurrentData();
     return { ok: true };
   },
 
@@ -649,16 +952,22 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     };
 
     set({ stats: newStats, expenses: newExpenses });
-    persistStats(newStats);
-    persistExpenses(newExpenses);
+    persistCurrentData();
     return { ok: true };
   },
 
-  addSubscription: (name: string, amount: number): AddSubscriptionResult => {
+  addSubscription: (
+    name: string,
+    amount: number,
+    startMonth = getNextMonthLabel(get().stats.currentMonthLabel)
+  ): AddSubscriptionResult => {
     const { stats, subscriptions } = get();
     const trimmedName = name.trim();
     if (!trimmedName || !isValidAmount(amount) || amount <= 0) {
       return { ok: false, message: 'Enter a name and a valid amount greater than 0.' };
+    }
+    if (!isValidMonthLabel(startMonth) || isAfterMonth(stats.currentMonthLabel, startMonth)) {
+      return { ok: false, message: 'Choose a valid start month in the current or a future cycle.' };
     }
     if (stats.baseAllowance === null) {
       return { ok: false, message: 'Set up your monthly budget before adding subscriptions.' };
@@ -668,11 +977,119 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       id: Crypto.randomUUID ? Crypto.randomUUID() : `subscription_${Date.now()}_${Math.random()}`,
       name: trimmedName,
       amount: roundMoney(amount),
-      startMonth: getNextMonthLabel(stats.currentMonthLabel),
+      startMonth,
+      changes: [],
+      paymentOverrides: [],
     };
     const newSubscriptions = [...subscriptions, subscription];
-    set({ subscriptions: newSubscriptions });
-    persistSubscriptions(newSubscriptions);
+    const newExpenses =
+      startMonth === stats.currentMonthLabel
+        ? applySubscriptionExpenses(newSubscriptions, get().expenses, startMonth)
+        : get().expenses;
+    const newStats = {
+      ...stats,
+      currentRemaining: calculateRemaining(stats, newExpenses),
+    };
+    set({ stats: newStats, expenses: newExpenses, subscriptions: newSubscriptions });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  updateSubscription: (id, name, amount, effectiveMonth): AddSubscriptionResult => {
+    const { stats, expenses, subscriptions } = get();
+    const trimmedName = name.trim();
+    if (!trimmedName || !isValidAmount(amount) || amount <= 0) {
+      return { ok: false, message: 'Enter a name and a valid amount greater than 0.' };
+    }
+    if (!isValidMonthLabel(effectiveMonth) || isAfterMonth(stats.currentMonthLabel, effectiveMonth)) {
+      return { ok: false, message: 'Choose a valid effective month in the current or a future cycle.' };
+    }
+    const subscription = subscriptions.find((item) => item.id === id);
+    if (!subscription || subscription.cancelledFromMonth) {
+      return { ok: false, message: 'This subscription is no longer active.' };
+    }
+    if (isAfterMonth(subscription.startMonth, effectiveMonth)) {
+      return {
+        ok: false,
+        message: 'Choose an effective month on or after the subscription start month.',
+      };
+    }
+
+    const changes = (subscription.changes ?? []).filter(
+      (change) => change.effectiveMonth !== effectiveMonth
+    );
+    changes.push({
+      effectiveMonth,
+      name: trimmedName,
+      amount: roundMoney(amount),
+    });
+    changes.sort((a, b) => a.effectiveMonth.localeCompare(b.effectiveMonth));
+    const updatedSubscription = { ...subscription, changes };
+    const newSubscriptions = subscriptions.map((item) =>
+      item.id === id ? updatedSubscription : item
+    );
+    const affectedMonths = new Set([
+      effectiveMonth,
+      ...expenses
+        .filter(
+          (expense) =>
+            expense.subscriptionId === id && expense.monthLabel >= effectiveMonth
+        )
+        .map((expense) => expense.monthLabel),
+    ]);
+    let newExpenses = expenses;
+    Array.from(affectedMonths)
+      .sort()
+      .forEach((monthLabel) => {
+        newExpenses = applySubscriptionExpenses(newSubscriptions, newExpenses, monthLabel);
+      });
+    const newStats = {
+      ...stats,
+      currentRemaining: calculateRemaining(stats, newExpenses),
+    };
+
+    set({ stats: newStats, expenses: newExpenses, subscriptions: newSubscriptions });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  setSubscriptionPaymentOverride: (id, monthLabel, amount): AddSubscriptionResult => {
+    const { stats, expenses, subscriptions } = get();
+    if (!isValidMonthLabel(monthLabel) || isAfterMonth(stats.currentMonthLabel, monthLabel)) {
+      return { ok: false, message: 'Choose the current or a future budget month.' };
+    }
+    if (amount !== null && !isValidAmount(amount)) {
+      return { ok: false, message: 'Enter a valid payment amount.' };
+    }
+    const subscription = subscriptions.find((item) => item.id === id);
+    if (
+      !subscription ||
+      monthLabel < subscription.startMonth ||
+      (subscription.cancelledFromMonth && monthLabel >= subscription.cancelledFromMonth)
+    ) {
+      return { ok: false, message: 'This subscription is not active in that month.' };
+    }
+
+    const paymentOverrides = (subscription.paymentOverrides ?? []).filter(
+      (item) => item.monthLabel !== monthLabel
+    );
+    paymentOverrides.push(
+      amount === null
+        ? { monthLabel, skipped: true }
+        : { monthLabel, skipped: false, amount: roundMoney(amount) }
+    );
+    const updatedSubscription = { ...subscription, paymentOverrides };
+    const newSubscriptions = subscriptions.map((item) =>
+      item.id === id ? updatedSubscription : item
+    );
+    const newExpenses = applySubscriptionExpenses(newSubscriptions, expenses, monthLabel);
+    const newStats = {
+      ...stats,
+      currentRemaining: calculateRemaining(stats, newExpenses),
+    };
+
+    set({ stats: newStats, expenses: newExpenses, subscriptions: newSubscriptions });
+    persistCurrentData();
     return { ok: true };
   },
 
@@ -685,15 +1102,29 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     const newSubscriptions = subscriptions.map((item) =>
       item.id === id ? { ...item, cancelledFromMonth } : item
     );
-    set({ subscriptions: newSubscriptions });
-    persistSubscriptions(newSubscriptions);
+    const affectedMonths = new Set([
+      cancelledFromMonth,
+      ...get()
+        .expenses.filter(
+          (expense) =>
+            expense.subscriptionId === id && expense.monthLabel >= cancelledFromMonth
+        )
+        .map((expense) => expense.monthLabel),
+    ]);
+    let newExpenses = get().expenses;
+    Array.from(affectedMonths)
+      .sort()
+      .forEach((monthLabel) => {
+        newExpenses = applySubscriptionExpenses(newSubscriptions, newExpenses, monthLabel);
+      });
+    set({ subscriptions: newSubscriptions, expenses: newExpenses });
+    persistCurrentData();
   },
 
   deleteExpense: (id: string) => {
     const { stats, expenses } = get();
     const expenseToDelete = expenses.find((e) => e.id === id);
-    if (!expenseToDelete) return;
-    if (expenseToDelete.subscriptionId) return;
+    if (!expenseToDelete || expenseToDelete.subscriptionId) return;
 
     const newExpenses = expenses.filter((e) => e.id !== id);
 
@@ -701,8 +1132,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     newStats.currentRemaining = calculateRemaining(newStats, newExpenses);
 
     set({ stats: newStats, expenses: newExpenses });
-    persistStats(newStats);
-    persistExpenses(newExpenses);
+    persistCurrentData();
   },
 
   endMonth: () => {
@@ -745,9 +1175,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     newStats.currentRemaining = calculateRemaining(newStats, newExpenses);
 
     set({ stats: newStats, savingsHistory: newHistory, expenses: newExpenses });
-    persistStats(newStats);
-    persistSavingsHistory(newHistory);
-    if (newExpenses !== expenses) persistExpenses(newExpenses);
+    persistCurrentData();
   },
 
   resetAllData: async () => {
@@ -779,4 +1207,5 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     const target = monthLabel || stats.currentMonthLabel;
     return expenses.filter((e) => e.monthLabel === target);
   },
-}));
+  });
+});

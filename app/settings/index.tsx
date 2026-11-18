@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { THEME } from '@/constants/theme';
@@ -29,9 +29,15 @@ const menuItems = [
   },
   {
     route: '/settings/about' as const,
-    title: 'Privacy & About',
-    subtitle: 'Privacy notice, terms and data controls',
+    title: 'Privacy & Terms',
+    subtitle: 'Privacy notice and legal terms',
     icon: 'shield-checkmark-outline' as const,
+  },
+  {
+    route: '/settings/data' as Href,
+    title: 'Data & Backup',
+    subtitle: 'Export, restore, or clear this device’s ledger',
+    icon: 'archive-outline' as const,
   },
 ];
 
@@ -86,7 +92,7 @@ export default function SettingsScreen() {
 
             return (
               <TouchableOpacity
-                key={item.route}
+                key={item.title}
                 style={styles.menuItem}
                 onPress={() => router.push(item.route)}
                 activeOpacity={0.75}
