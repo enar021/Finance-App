@@ -49,7 +49,7 @@ function roundMoney(value: number): number {
 }
 
 function isValidAmount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 999_999_999.99;
 }
 
 function isValidMonthLabel(value: unknown): value is string {
@@ -544,11 +544,22 @@ function normalizeBackup(value: unknown): {
   }
 
   const bankName = rawStats.bankName.trim();
-  const distributedTotal = roundMoney(bankAccounts.reduce((sum, b) => sum + b.balance, 0));
   const rawTotalBank =
     rawStats.totalBank !== null && isValidAmount(rawStats.totalBank)
       ? roundMoney(rawStats.totalBank as number)
       : 0;
+
+  // Backward compatibility: synthesize a primary bank if backup predates multi-bank
+  if (bankAccounts.length === 0 && (rawTotalBank > 0 || bankName)) {
+    bankAccounts.push({
+      id: `bank_${Date.now()}`,
+      name: bankName || 'Savings',
+      balance: rawTotalBank,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  const distributedTotal = roundMoney(bankAccounts.reduce((sum, b) => sum + b.balance, 0));
   const computedTotalBank = bankAccounts.length > 0 ? distributedTotal : Math.max(rawTotalBank, distributedTotal);
   const pendingRollover = rawStats.pendingRollover
     ? normalizePendingRollover(rawStats.pendingRollover)
@@ -1473,8 +1484,15 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     if (!trimmed) {
       return { ok: false, message: 'Please enter a bank name.' };
     }
+    if (Number.isFinite(initialBalance) && initialBalance < 0) {
+      return { ok: false, message: 'Starting balance cannot be negative.' };
+    }
     const balance = Number.isFinite(initialBalance) && initialBalance >= 0 ? roundMoney(initialBalance) : 0;
     const { stats, bankAccounts } = get();
+
+    if (bankAccounts.some((b) => b.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      return { ok: false, message: 'A bank account with this name already exists.' };
+    }
 
     const newBank: BankAccount = {
       id: `bank_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -1514,6 +1532,10 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       return { ok: false, message: 'Bank account not found.' };
     }
 
+    if (bankAccounts.some((b) => b.id !== id && b.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      return { ok: false, message: 'Another bank account with this name already exists.' };
+    }
+
     const roundedBalance = roundMoney(balance);
     const updatedBankAccounts = bankAccounts.map((b) =>
       b.id === id ? { ...b, name: trimmed, balance: roundedBalance } : b
@@ -1526,6 +1548,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     const newStats: UserStats = {
       ...stats,
       totalBank: newTotalBank,
+      bankName: bankAccounts.length === 1 || existing.name === stats.bankName ? trimmed : stats.bankName,
     };
 
     set({ stats: newStats, bankAccounts: updatedBankAccounts });
@@ -1564,6 +1587,10 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     const newStats: UserStats = {
       ...stats,
       totalBank: newTotalBank,
+      bankName:
+        target.name === stats.bankName || updatedRemaining.length === 1
+          ? updatedRemaining[0].name
+          : stats.bankName,
     };
 
     set({ stats: newStats, bankAccounts: updatedRemaining });
@@ -1667,7 +1694,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
         if (!bankAccounts.some((b) => b.id === bId)) {
           return { ok: false, message: 'One of the selected bank accounts was not found.' };
         }
-        if (amt < 0) {
+        if (!Number.isFinite(amt) || amt < 0) {
           return { ok: false, message: 'Allocation amounts cannot be negative.' };
         }
         allocations[bId] = roundMoney(amt);
