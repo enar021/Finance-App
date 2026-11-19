@@ -1,3 +1,15 @@
+export interface BankAccount {
+  id: string;
+  name: string;        // e.g. "BDO", "Maya Savings", "GCash"
+  balance: number;     // Savings balance in this specific bank
+  createdAt: string;
+}
+
+export interface PendingRollover {
+  amount: number;
+  monthLabel: string;
+}
+
 export interface UserStats {
   bankName: string;
   baseAllowance: number | null;
@@ -7,6 +19,7 @@ export interface UserStats {
   currentRemaining: number | null;
   totalBank: number | null;
   currentMonthLabel: string;
+  pendingRollover?: PendingRollover | null;
 }
 
 export interface ExtraMoneyRecord {
@@ -68,6 +81,7 @@ export interface FinanceBackup {
     expenses: Expense[];
     savingsHistory: SavingsRecord[];
     subscriptions: Subscription[];
+    bankAccounts?: BankAccount[];
   };
 }
 
@@ -86,6 +100,7 @@ export interface FinanceState {
   expenses: Expense[];
   savingsHistory: SavingsRecord[];
   subscriptions: Subscription[];
+  bankAccounts: BankAccount[];
   isLoaded: boolean;
   hasAcceptedTerms: boolean;
   hasConfirmedBackupConsent: boolean;
@@ -117,7 +132,14 @@ export interface FinanceState {
   ) => AddSubscriptionResult;
   cancelSubscription: (id: string) => void;
   deleteExpense: (id: string) => void;
-  endMonth: () => void;
+  endMonth: (target?: string | Record<string, number>) => void;
   resetAllData: () => Promise<boolean>;
   getMonthExpenses: (monthLabel?: string) => Expense[];
+  addBankAccount: (name: string, initialBalance?: number) => { ok: boolean; message?: string };
+  updateBankAccount: (id: string, name: string, balance: number) => { ok: boolean; message?: string };
+  deleteBankAccount: (id: string, transferToId?: string) => { ok: boolean; message?: string };
+  transferBetweenBanks: (fromId: string, toId: string, amount: number) => { ok: boolean; message?: string };
+  addMoneyToBank: (bankId: string, amount: number, note?: string) => { ok: boolean; message?: string };
+  distributeRollover: (target: string | Record<string, number>) => { ok: boolean; message?: string };
+  dismissPendingRollover: () => void;
 }

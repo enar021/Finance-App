@@ -246,8 +246,8 @@ export default function DataSettingsScreen() {
           <View style={styles.confirmationCard}>
             <Text style={styles.confirmationTitle}>Clear all data?</Text>
             <Text style={styles.confirmationBody}>
-              This permanently removes your account name, budget, savings balance, subscriptions,
-              and expenses from this device. This cannot be undone.
+              This permanently removes your savings accounts, budget, subscriptions, and expenses from
+              this device. This cannot be undone.
             </Text>
             {resetError ? <Text style={styles.confirmationError}>{resetError}</Text> : null}
             <View style={styles.confirmationActions}>

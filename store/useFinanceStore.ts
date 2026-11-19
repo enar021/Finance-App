@@ -9,9 +9,10 @@ import type {
   ExtraMoneyRecord,
   Subscription,
   AddSubscriptionResult,
-  FinanceBackup,
   SubscriptionChange,
   SubscriptionPaymentOverride,
+  BankAccount,
+  PendingRollover,
 } from '@/types';
 import {
   formatMonthLabel,
@@ -29,6 +30,7 @@ const SAVINGS_HISTORY_KEY = '@pocketledger_savings_history_v2';
 const SUBSCRIPTIONS_KEY = '@pennywise_subscriptions_v1';
 const TERMS_KEY = '@pennywise_terms_accepted_v1';
 const BACKUP_CONSENT_KEY = '@pennywise_backup_consent_v1';
+const BANK_ACCOUNTS_KEY = '@pennywise_bank_accounts_v1';
 
 const DEFAULT_STATS: UserStats = {
   bankName: '',
@@ -39,6 +41,7 @@ const DEFAULT_STATS: UserStats = {
   currentRemaining: null,
   totalBank: 0,
   currentMonthLabel: getMonthLabel(),
+  pendingRollover: null,
 };
 
 function roundMoney(value: number): number {
@@ -158,11 +161,13 @@ function advanceMonthsIfNeeded(
   currentStats: UserStats,
   expenses: Expense[],
   history: SavingsRecord[] = [],
-  subscriptions: Subscription[] = []
-): { stats: UserStats; history: SavingsRecord[]; expenses: Expense[]; changed: boolean } {
+  subscriptions: Subscription[] = [],
+  bankAccounts: BankAccount[] = []
+): { stats: UserStats; history: SavingsRecord[]; expenses: Expense[]; bankAccounts: BankAccount[]; changed: boolean } {
   const targetMonth = getMonthLabel();
   let currentMonth = currentStats.currentMonthLabel;
   let updatedExpenses = expenses;
+  let updatedBankAccounts = [...bankAccounts];
 
   if (!isAfterMonth(targetMonth, currentMonth)) {
     updatedExpenses = applySubscriptionExpenses(subscriptions, updatedExpenses, currentMonth);
@@ -170,15 +175,16 @@ function advanceMonthsIfNeeded(
       updatedExpenses === expenses
         ? currentStats
         : { ...currentStats, currentRemaining: calculateRemaining(currentStats, updatedExpenses) };
-    return { stats: updatedStats, history, expenses: updatedExpenses, changed: false };
+    return { stats: updatedStats, history, expenses: updatedExpenses, bankAccounts, changed: false };
   }
 
-  let totalBank = currentStats.totalBank;
+  let totalBank = roundMoney(updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0));
   let newHistory = [...history];
+  let pendingRollover: { amount: number; monthLabel: string } | null = currentStats.pendingRollover ?? null;
 
   while (isAfterMonth(targetMonth, currentMonth)) {
     updatedExpenses = applySubscriptionExpenses(subscriptions, updatedExpenses, currentMonth);
-    if (currentStats.baseAllowance !== null && totalBank !== null) {
+    if (currentStats.baseAllowance !== null) {
       const monthExpenses = updatedExpenses.filter((e) => e.monthLabel === currentMonth);
       const spent = roundMoney(monthExpenses.reduce((sum, e) => sum + e.amount, 0));
       const monthBudget = roundMoney(
@@ -186,7 +192,21 @@ function advanceMonthsIfNeeded(
           (currentMonth === currentStats.currentMonthLabel ? (currentStats.extraAllowance ?? 0) : 0)
       );
       const surplus = roundMoney(Math.max(0, monthBudget - spent));
-      totalBank = roundMoney(totalBank + surplus);
+
+      if (surplus > 0) {
+        if (updatedBankAccounts.length === 1) {
+          updatedBankAccounts[0] = {
+            ...updatedBankAccounts[0],
+            balance: roundMoney(updatedBankAccounts[0].balance + surplus),
+          };
+          totalBank = roundMoney(updatedBankAccounts[0].balance);
+        } else if (updatedBankAccounts.length > 1) {
+          pendingRollover = {
+            amount: roundMoney((pendingRollover?.amount ?? 0) + surplus),
+            monthLabel: currentMonth,
+          };
+        }
+      }
 
       const record: SavingsRecord = {
         id: `sav_${currentMonth}_${Date.now()}`,
@@ -195,7 +215,7 @@ function advanceMonthsIfNeeded(
         budget: monthBudget,
         spent,
         rolloverAmount: surplus,
-        newTotalSavings: totalBank,
+        newTotalSavings: roundMoney(totalBank + (pendingRollover ? pendingRollover.amount : 0)),
         note: `Rollover savings from ${formatMonthLabel(currentMonth)}`,
       };
       newHistory = [record, ...newHistory.filter((h) => h.monthLabel !== currentMonth)];
@@ -204,17 +224,22 @@ function advanceMonthsIfNeeded(
   }
 
   updatedExpenses = applySubscriptionExpenses(subscriptions, updatedExpenses, currentMonth);
+  const computedTotalBank = roundMoney(
+    updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0) +
+      (pendingRollover ? pendingRollover.amount : 0)
+  );
   const updatedStats: UserStats = {
     ...currentStats,
-    totalBank,
+    totalBank: computedTotalBank,
     extraAllowance: 0,
     extraMoneyHistory: [],
     currentMonthLabel: currentMonth,
     currentRemaining: null,
+    pendingRollover,
   };
   updatedStats.currentRemaining = calculateRemaining(updatedStats, updatedExpenses);
 
-  return { stats: updatedStats, history: newHistory, expenses: updatedExpenses, changed: true };
+  return { stats: updatedStats, history: newHistory, expenses: updatedExpenses, bankAccounts: updatedBankAccounts, changed: true };
 }
 
 function normalizeExpense(expense: unknown): Expense | null {
@@ -388,6 +413,41 @@ function normalizeSubscriptionPaymentOverride(
   };
 }
 
+function normalizePendingRollover(value: unknown): PendingRollover | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Partial<PendingRollover>;
+  if (typeof item.amount !== 'number' || !isValidAmount(item.amount) || item.amount <= 0) {
+    return null;
+  }
+  if (typeof item.monthLabel !== 'string' || !isValidMonthLabel(item.monthLabel)) {
+    return null;
+  }
+  return {
+    amount: roundMoney(item.amount),
+    monthLabel: item.monthLabel,
+  };
+}
+
+function normalizeBankAccount(value: unknown): BankAccount | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Partial<BankAccount>;
+  if (
+    typeof item.id !== 'string' ||
+    !item.id ||
+    typeof item.name !== 'string' ||
+    !item.name.trim() ||
+    !isValidAmount(item.balance)
+  ) {
+    return null;
+  }
+  return {
+    id: item.id,
+    name: item.name.trim(),
+    balance: roundMoney(item.balance),
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -397,6 +457,7 @@ function normalizeBackup(value: unknown): {
   expenses: Expense[];
   savingsHistory: SavingsRecord[];
   subscriptions: Subscription[];
+  bankAccounts: BankAccount[];
 } | null {
   if (
     !isRecord(value) ||
@@ -409,8 +470,13 @@ function normalizeBackup(value: unknown): {
     return null;
   }
 
-  const { stats: rawStats, expenses: rawExpenses, savingsHistory: rawHistory, subscriptions: rawSubscriptions } =
-    value.data;
+  const {
+    stats: rawStats,
+    expenses: rawExpenses,
+    savingsHistory: rawHistory,
+    subscriptions: rawSubscriptions,
+    bankAccounts: rawBankAccounts,
+  } = value.data;
   if (
     !isRecord(rawStats) ||
     typeof rawStats.bankName !== 'string' ||
@@ -420,6 +486,7 @@ function normalizeBackup(value: unknown): {
     !Array.isArray(rawExpenses) ||
     !Array.isArray(rawHistory) ||
     !Array.isArray(rawSubscriptions) ||
+    (rawBankAccounts !== undefined && !Array.isArray(rawBankAccounts)) ||
     (rawStats.extraAllowance !== undefined && !isValidAmount(rawStats.extraAllowance)) ||
     (rawStats.rolloverInProgressFromMonth !== undefined &&
       !isValidMonthLabel(rawStats.rolloverInProgressFromMonth)) ||
@@ -448,12 +515,18 @@ function normalizeBackup(value: unknown): {
   const extraMoneyHistory = (rawStats.extraMoneyHistory ?? [])
     .map(normalizeExtraMoneyRecord)
     .filter((record): record is ExtraMoneyRecord => record !== null);
+  const bankAccounts = Array.isArray(rawBankAccounts)
+    ? rawBankAccounts
+        .map(normalizeBankAccount)
+        .filter((bank): bank is BankAccount => bank !== null)
+    : [];
 
   if (
     expenses.length !== rawExpenses.length ||
     savingsHistory.length !== rawHistory.length ||
     subscriptions.length !== rawSubscriptions.length ||
-    extraMoneyHistory.length !== (rawStats.extraMoneyHistory ?? []).length
+    extraMoneyHistory.length !== (rawStats.extraMoneyHistory ?? []).length ||
+    (Array.isArray(rawBankAccounts) && bankAccounts.length !== rawBankAccounts.length)
   ) {
     return null;
   }
@@ -464,13 +537,25 @@ function normalizeBackup(value: unknown): {
     !hasUniqueIds(expenses) ||
     !hasUniqueIds(savingsHistory) ||
     !hasUniqueIds(subscriptions) ||
-    !hasUniqueIds(extraMoneyHistory)
+    !hasUniqueIds(extraMoneyHistory) ||
+    !hasUniqueIds(bankAccounts)
   ) {
     return null;
   }
 
+  const bankName = rawStats.bankName.trim();
+  const distributedTotal = roundMoney(bankAccounts.reduce((sum, b) => sum + b.balance, 0));
+  const rawTotalBank =
+    rawStats.totalBank !== null && isValidAmount(rawStats.totalBank)
+      ? roundMoney(rawStats.totalBank as number)
+      : 0;
+  const computedTotalBank = bankAccounts.length > 0 ? distributedTotal : Math.max(rawTotalBank, distributedTotal);
+  const pendingRollover = rawStats.pendingRollover
+    ? normalizePendingRollover(rawStats.pendingRollover)
+    : null;
+
   const stats: UserStats = {
-    bankName: rawStats.bankName.trim(),
+    bankName,
     baseAllowance:
       rawStats.baseAllowance === null ? null : roundMoney(rawStats.baseAllowance as number),
     extraAllowance:
@@ -478,16 +563,18 @@ function normalizeBackup(value: unknown): {
     extraMoneyHistory,
     rolloverInProgressFromMonth: rolloverMonth,
     currentRemaining: null,
-    totalBank: rawStats.totalBank === null ? null : roundMoney(rawStats.totalBank as number),
+    totalBank: computedTotalBank,
     currentMonthLabel: rawStats.currentMonthLabel,
+    pendingRollover,
   };
 
-  return { stats, expenses, savingsHistory, subscriptions };
+  return { stats, expenses, savingsHistory, subscriptions, bankAccounts };
 }
 
 export const useFinanceStore = create<FinanceState>((set, get) => {
   let writeQueue: Promise<void> = Promise.resolve();
   let writeRevision = 0;
+  let isCurrentlyLoading = false;
 
   const persistEntries = async (
     entries: [string, string][],
@@ -513,13 +600,15 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
   };
 
   const persistCurrentData = (): void => {
-    const { stats, expenses, savingsHistory, subscriptions } = get();
+    if (!get().isLoaded) return;
+    const { stats, expenses, savingsHistory, subscriptions, bankAccounts } = get();
     void persistEntries(
       [
         [STATS_KEY, JSON.stringify(stats)],
         [EXPENSES_KEY, JSON.stringify(expenses)],
         [SAVINGS_HISTORY_KEY, JSON.stringify(savingsHistory)],
         [SUBSCRIPTIONS_KEY, JSON.stringify(subscriptions)],
+        [BANK_ACCOUNTS_KEY, JSON.stringify(bankAccounts)],
       ],
       'finance data'
     );
@@ -530,19 +619,25 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
   expenses: [],
   savingsHistory: [],
   subscriptions: [],
+  bankAccounts: [],
   isLoaded: false,
   hasAcceptedTerms: false,
   hasConfirmedBackupConsent: false,
   saveStatus: 'idle',
 
   loadData: async () => {
-    const [
+    if (isCurrentlyLoading) return;
+    isCurrentlyLoading = true;
+    try {
+      await writeQueue;
+      const [
       statsRes,
       expensesRes,
       savingsHistoryRes,
       subscriptionsRes,
       termsRes,
       backupConsentRes,
+      bankAccountsRes,
     ] = await Promise.allSettled([
       AsyncStorage.getItem(STATS_KEY),
       AsyncStorage.getItem(EXPENSES_KEY),
@@ -550,6 +645,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       AsyncStorage.getItem(SUBSCRIPTIONS_KEY),
       AsyncStorage.getItem(TERMS_KEY),
       AsyncStorage.getItem(BACKUP_CONSENT_KEY),
+      AsyncStorage.getItem(BANK_ACCOUNTS_KEY),
     ]);
 
     const statsRaw = statsRes.status === 'fulfilled' ? statsRes.value : null;
@@ -559,6 +655,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     const subscriptionsRaw =
       subscriptionsRes.status === 'fulfilled' ? subscriptionsRes.value : null;
     const termsRaw = termsRes.status === 'fulfilled' ? termsRes.value : null;
+    const bankAccountsRaw =
+      bankAccountsRes.status === 'fulfilled' ? bankAccountsRes.value : null;
 
     if (statsRes.status === 'rejected') {
       console.error('Failed to read stats key:', statsRes.reason);
@@ -577,6 +675,9 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     }
     if (backupConsentRes.status === 'rejected') {
       console.error('Failed to read backup consent key:', backupConsentRes.reason);
+    }
+    if (bankAccountsRes.status === 'rejected') {
+      console.error('Failed to read bank accounts key:', bankAccountsRes.reason);
     }
 
     const parsedStats = safeParseJSON<unknown>(statsRaw, null, STATS_KEY);
@@ -611,8 +712,66 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
           .filter((subscription): subscription is Subscription => subscription !== null)
       : [];
 
+    const parsedBankAccounts = safeParseJSON<unknown>(
+      bankAccountsRaw,
+      [],
+      BANK_ACCOUNTS_KEY
+    );
+    let bankAccounts = Array.isArray(parsedBankAccounts)
+      ? parsedBankAccounts
+          .map(normalizeBankAccount)
+          .filter((bank): bank is BankAccount => bank !== null)
+      : [];
+
+    if (new Set(bankAccounts.map((b) => b.id)).size !== bankAccounts.length) {
+      bankAccounts = [];
+    }
+
     const bankName =
       typeof storedStats?.bankName === 'string' ? storedStats.bankName.trim() : '';
+
+    let shouldPersist = false;
+
+    const storedTotalBank =
+      isValidAmount(storedStats?.totalBank) ? roundMoney(storedStats.totalBank) : 0;
+
+    // Backward compatibility: If no bankAccounts exist, create initial bank with existing savings
+    if (bankAccounts.length === 0 && (storedTotalBank > 0 || bankName)) {
+      bankAccounts = [
+        {
+          id: `bank_${Date.now()}`,
+          name: bankName || 'Savings',
+          balance: storedTotalBank,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+      shouldPersist = true;
+    }
+
+    const distributedSum = roundMoney(
+      bankAccounts.reduce((sum, b) => sum + b.balance, 0)
+    );
+
+    let pendingRollover = normalizePendingRollover(storedStats?.pendingRollover);
+
+    // If pendingRollover is null, trust it — distributeRollover() already cleared it.
+    // If pendingRollover exists, trust it — dismissPendingRollover() preserves it.
+    // Only correct obviously inflated history records from the old doubling bug:
+    // if pendingRollover is null but history shows a total higher than what's in
+    // the banks, the history figure was inflated — fix it cosmetically.
+    const latestSavingsRecord = savingsHistory[0];
+    if (
+      !pendingRollover &&
+      latestSavingsRecord &&
+      latestSavingsRecord.newTotalSavings > distributedSum
+    ) {
+      latestSavingsRecord.newTotalSavings = distributedSum;
+      shouldPersist = true;
+    }
+
+    const totalBank = roundMoney(
+      distributedSum + (pendingRollover ? pendingRollover.amount : 0)
+    );
 
     let stats: UserStats = {
       bankName,
@@ -633,12 +792,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
           ? storedStats.rolloverInProgressFromMonth
           : undefined,
       currentRemaining: null,
-      totalBank:
-        bankName
-          ? isValidAmount(storedStats?.totalBank)
-            ? roundMoney(storedStats.totalBank)
-            : 0
-          : 0,
+      totalBank,
+      pendingRollover,
       currentMonthLabel:
         isValidMonthLabel(storedStats?.currentMonthLabel) &&
         (
@@ -656,9 +811,9 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     const shouldClearRollover =
       Boolean(stats.rolloverInProgressFromMonth) &&
       stats.currentMonthLabel === getMonthLabel();
-    const advanced = advanceMonthsIfNeeded(stats, expenses, savingsHistory, subscriptions);
+    const advanced = advanceMonthsIfNeeded(stats, expenses, savingsHistory, subscriptions, bankAccounts);
     expenses = advanced.expenses;
-    let shouldPersist = false;
+    bankAccounts = advanced.bankAccounts;
     if (advanced.changed) {
       stats = advanced.stats;
       savingsHistory = advanced.history;
@@ -680,7 +835,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       }
     }
 
-    const hasAcceptedTerms = termsRaw === 'true' || Boolean(storedStats?.bankName);
+    const hasAcceptedTerms = termsRaw === 'true' || Boolean(stats.bankName);
     const hasConfirmedBackupConsent =
       backupConsentRes.status === 'fulfilled' && backupConsentRes.value === 'true';
 
@@ -689,11 +844,15 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       expenses,
       savingsHistory,
       subscriptions,
+      bankAccounts,
       hasAcceptedTerms,
       hasConfirmedBackupConsent,
       isLoaded: true,
     });
     if (shouldPersist) persistCurrentData();
+    } finally {
+      isCurrentlyLoading = false;
+    }
   },
 
   clearSaveStatus: () => {
@@ -713,12 +872,12 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
 
   createBackup: () => {
     get().checkAndAdvanceMonth();
-    const { stats, expenses, savingsHistory, subscriptions } = get();
+    const { stats, expenses, savingsHistory, subscriptions, bankAccounts } = get();
     return {
       app: 'penny-wise',
       version: 1,
       exportedAt: new Date().toISOString(),
-      data: { stats, expenses, savingsHistory, subscriptions },
+      data: { stats, expenses, savingsHistory, subscriptions, bankAccounts },
     };
   },
 
@@ -735,7 +894,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       restored.stats,
       restored.expenses,
       restored.savingsHistory,
-      restored.subscriptions
+      restored.subscriptions,
+      restored.bankAccounts
     );
     const stats = {
       ...advanced.stats,
@@ -746,6 +906,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       [EXPENSES_KEY, JSON.stringify(advanced.expenses)],
       [SAVINGS_HISTORY_KEY, JSON.stringify(advanced.history)],
       [SUBSCRIPTIONS_KEY, JSON.stringify(restored.subscriptions)],
+      [BANK_ACCOUNTS_KEY, JSON.stringify(advanced.bankAccounts)],
     ];
 
     const saved = await persistEntries(values, 'ledger backup');
@@ -761,6 +922,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       expenses: advanced.expenses,
       savingsHistory: advanced.history,
       subscriptions: restored.subscriptions,
+      bankAccounts: advanced.bankAccounts,
       hasAcceptedTerms: get().hasAcceptedTerms || Boolean(stats.bankName),
       isLoaded: true,
     });
@@ -775,8 +937,15 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
   },
 
   checkAndAdvanceMonth: () => {
-    const { stats, expenses, savingsHistory, subscriptions } = get();
-    const advanced = advanceMonthsIfNeeded(stats, expenses, savingsHistory, subscriptions);
+    if (!get().isLoaded) return false;
+    const { stats, expenses, savingsHistory, subscriptions, bankAccounts } = get();
+    const advanced = advanceMonthsIfNeeded(
+      stats,
+      expenses,
+      savingsHistory,
+      subscriptions,
+      bankAccounts
+    );
     let checkedStats = advanced.stats;
     if (advanced.changed) {
       if (checkedStats.currentMonthLabel === getMonthLabel()) {
@@ -792,7 +961,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
 
     const expensesChanged = advanced.expenses !== expenses;
     const statsChanged = checkedStats !== stats;
-    if (statsChanged || expensesChanged || advanced.changed) {
+    const banksChanged = advanced.bankAccounts !== bankAccounts;
+    if (statsChanged || expensesChanged || banksChanged || advanced.changed) {
       if (!advanced.changed && expensesChanged) {
         checkedStats.currentRemaining = calculateRemaining(checkedStats, advanced.expenses);
       }
@@ -800,6 +970,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
         stats: checkedStats,
         expenses: advanced.expenses,
         savingsHistory: advanced.history,
+        bankAccounts: advanced.bankAccounts,
       });
       persistCurrentData();
     }
@@ -807,20 +978,49 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
   },
 
   saveSettings: (bankName: string, allowance: number, savingsBalance: number) => {
-    const { stats, expenses } = get();
+    const { stats, expenses, bankAccounts } = get();
     if (!bankName.trim() || !isValidAmount(allowance) || !isValidAmount(savingsBalance)) return;
+
+    const trimmedBankName = bankName.trim();
+    const roundedAllowance = roundMoney(allowance);
+    const roundedSavings = roundMoney(savingsBalance);
+
+    let updatedBankAccounts = [...bankAccounts];
+    if (updatedBankAccounts.length === 0) {
+      updatedBankAccounts = [
+        {
+          id: `bank_${Date.now()}`,
+          name: trimmedBankName || 'Primary Savings',
+          balance: roundedSavings,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    } else if (updatedBankAccounts.length === 1) {
+      updatedBankAccounts = [
+        {
+          ...updatedBankAccounts[0],
+          name: trimmedBankName,
+          balance: roundedSavings,
+        },
+      ];
+    }
+
+    const newTotalBank = roundMoney(
+      updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0) +
+        (stats.pendingRollover?.amount ?? 0)
+    );
 
     const newStats: UserStats = {
       ...stats,
-      bankName: bankName.trim(),
-      baseAllowance: roundMoney(allowance),
+      bankName: trimmedBankName,
+      baseAllowance: roundedAllowance,
       extraAllowance: roundMoney(stats.extraAllowance ?? 0),
-      totalBank: roundMoney(savingsBalance),
+      totalBank: newTotalBank,
       currentRemaining: null,
     };
     newStats.currentRemaining = calculateRemaining(newStats, expenses);
 
-    set({ stats: newStats });
+    set({ stats: newStats, bankAccounts: updatedBankAccounts });
     persistCurrentData();
   },
 
@@ -1137,8 +1337,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     persistCurrentData();
   },
 
-  endMonth: () => {
-    const { stats, expenses, savingsHistory, subscriptions } = get();
+  endMonth: (target?: string | Record<string, number>) => {
+    const { stats, expenses, savingsHistory, subscriptions, bankAccounts } = get();
     if (stats.baseAllowance === null || stats.totalBank === null || !stats.bankName) return;
 
     const currentMonth = stats.currentMonthLabel;
@@ -1148,7 +1348,57 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     const spent = roundMoney(monthExpenses.reduce((sum, e) => sum + e.amount, 0));
     const totalBudget = roundMoney(stats.baseAllowance + (stats.extraAllowance ?? 0));
     const rolloverSavings = roundMoney(Math.max(0, totalBudget - spent));
-    const newTotalBank = roundMoney(stats.totalBank + rolloverSavings);
+
+    let updatedBankAccounts = [...bankAccounts];
+    let pendingRollover: { amount: number; monthLabel: string } | null =
+      stats.pendingRollover
+        ? {
+            amount: roundMoney(stats.pendingRollover.amount),
+            monthLabel: stats.pendingRollover.monthLabel,
+          }
+        : null;
+
+    if (rolloverSavings > 0) {
+      if (typeof target === 'string' && updatedBankAccounts.some((b) => b.id === target)) {
+        updatedBankAccounts = updatedBankAccounts.map((b) =>
+          b.id === target ? { ...b, balance: roundMoney(b.balance + rolloverSavings) } : b
+        );
+      } else if (typeof target === 'object' && target !== null) {
+        const allocatedTotal = roundMoney(
+          Object.values(target).reduce(
+            (sum, amount) => sum + (Number.isFinite(amount) && amount > 0 ? amount : 0),
+            0
+          )
+        );
+        if (
+          Math.abs(allocatedTotal - rolloverSavings) > 0.01 ||
+          Object.values(target).some((amount) => !Number.isFinite(amount) || amount < 0) ||
+          Object.keys(target).some((bankId) =>
+            !updatedBankAccounts.some((bank) => bank.id === bankId)
+          )
+        ) {
+          return;
+        }
+        updatedBankAccounts = updatedBankAccounts.map((b) => {
+          const addAmt = target[b.id] ? roundMoney(target[b.id]) : 0;
+          return addAmt > 0 ? { ...b, balance: roundMoney(b.balance + addAmt) } : b;
+        });
+      } else if (updatedBankAccounts.length === 1) {
+        updatedBankAccounts = [
+          { ...updatedBankAccounts[0], balance: roundMoney(updatedBankAccounts[0].balance + rolloverSavings) },
+        ];
+      } else {
+        pendingRollover = {
+          amount: roundMoney((pendingRollover?.amount ?? 0) + rolloverSavings),
+          monthLabel: pendingRollover?.monthLabel ?? currentMonth,
+        };
+      }
+    }
+
+    const newTotalBank = roundMoney(
+      updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0) +
+        (pendingRollover ? pendingRollover.amount : 0)
+    );
 
     const record: SavingsRecord = {
       id: `sav_${currentMonth}_${Date.now()}`,
@@ -1173,10 +1423,16 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
       rolloverInProgressFromMonth: currentMonth,
       currentRemaining: null,
       currentMonthLabel: nextMonth,
+      pendingRollover,
     };
     newStats.currentRemaining = calculateRemaining(newStats, newExpenses);
 
-    set({ stats: newStats, savingsHistory: newHistory, expenses: newExpenses });
+    set({
+      stats: newStats,
+      savingsHistory: newHistory,
+      expenses: newExpenses,
+      bankAccounts: updatedBankAccounts,
+    });
     persistCurrentData();
   },
 
@@ -1188,12 +1444,14 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
         AsyncStorage.removeItem(SAVINGS_HISTORY_KEY),
         AsyncStorage.removeItem(SUBSCRIPTIONS_KEY),
         AsyncStorage.removeItem(TERMS_KEY),
+        AsyncStorage.removeItem(BANK_ACCOUNTS_KEY),
       ]);
       set({
         stats: DEFAULT_STATS,
         expenses: [],
         savingsHistory: [],
         subscriptions: [],
+        bankAccounts: [],
         hasAcceptedTerms: false,
         isLoaded: true,
       });
@@ -1208,6 +1466,235 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
     const { stats, expenses } = get();
     const target = monthLabel || stats.currentMonthLabel;
     return expenses.filter((e) => e.monthLabel === target);
+  },
+
+  addBankAccount: (name: string, initialBalance = 0) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return { ok: false, message: 'Please enter a bank name.' };
+    }
+    const balance = Number.isFinite(initialBalance) && initialBalance >= 0 ? roundMoney(initialBalance) : 0;
+    const { stats, bankAccounts } = get();
+
+    const newBank: BankAccount = {
+      id: `bank_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      name: trimmed,
+      balance,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedBankAccounts = [...bankAccounts, newBank];
+    const pendingAmount = stats.pendingRollover?.amount ?? 0;
+    const newTotalBank = roundMoney(
+      updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0) + pendingAmount
+    );
+
+    const newStats: UserStats = {
+      ...stats,
+      totalBank: newTotalBank,
+    };
+
+    set({ stats: newStats, bankAccounts: updatedBankAccounts });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  updateBankAccount: (id: string, name: string, balance: number) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return { ok: false, message: 'Please enter a bank name.' };
+    }
+    if (!isValidAmount(balance)) {
+      return { ok: false, message: 'Please enter a valid balance (0 or greater).' };
+    }
+
+    const { stats, bankAccounts } = get();
+    const existing = bankAccounts.find((b) => b.id === id);
+    if (!existing) {
+      return { ok: false, message: 'Bank account not found.' };
+    }
+
+    const roundedBalance = roundMoney(balance);
+    const updatedBankAccounts = bankAccounts.map((b) =>
+      b.id === id ? { ...b, name: trimmed, balance: roundedBalance } : b
+    );
+    const pendingAmount = stats.pendingRollover?.amount ?? 0;
+    const newTotalBank = roundMoney(
+      updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0) + pendingAmount
+    );
+
+    const newStats: UserStats = {
+      ...stats,
+      totalBank: newTotalBank,
+    };
+
+    set({ stats: newStats, bankAccounts: updatedBankAccounts });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  deleteBankAccount: (id: string, transferToId?: string) => {
+    const { stats, bankAccounts } = get();
+    const target = bankAccounts.find((b) => b.id === id);
+    if (!target) {
+      return { ok: false, message: 'Bank account not found.' };
+    }
+    if (bankAccounts.length <= 1) {
+      return { ok: false, message: 'You must have at least one bank account.' };
+    }
+
+    const remaining = bankAccounts.filter((b) => b.id !== id);
+    let updatedRemaining = remaining;
+
+    // If the deleted bank had money, return it to the remaining bank
+    if (target.balance > 0) {
+      const destId = transferToId && remaining.some((b) => b.id === transferToId)
+        ? transferToId
+        : remaining[0].id;
+      updatedRemaining = remaining.map((b) =>
+        b.id === destId ? { ...b, balance: roundMoney(b.balance + target.balance) } : b
+      );
+    }
+
+    const pendingAmount = stats.pendingRollover?.amount ?? 0;
+    const newTotalBank = roundMoney(
+      updatedRemaining.reduce((sum, b) => sum + b.balance, 0) + pendingAmount
+    );
+
+    const newStats: UserStats = {
+      ...stats,
+      totalBank: newTotalBank,
+    };
+
+    set({ stats: newStats, bankAccounts: updatedRemaining });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  transferBetweenBanks: (fromId: string, toId: string, amount: number) => {
+    if (fromId === toId) {
+      return { ok: false, message: 'Source and destination must be different.' };
+    }
+    if (!isValidAmount(amount) || amount <= 0) {
+      return { ok: false, message: 'Transfer amount must be greater than 0.' };
+    }
+
+    const roundedAmount = roundMoney(amount);
+    const { bankAccounts } = get();
+    const fromBank = bankAccounts.find((b) => b.id === fromId);
+    const toBank = bankAccounts.find((b) => b.id === toId);
+
+    if (!fromBank || !toBank) {
+      return { ok: false, message: 'Selected bank accounts could not be found.' };
+    }
+
+    if (fromBank.balance < roundedAmount) {
+      return {
+        ok: false,
+        message: `Insufficient balance in ${fromBank.name}. Available: ₱ ${fromBank.balance.toFixed(2)}`,
+      };
+    }
+
+    const updatedBankAccounts = bankAccounts.map((b) => {
+      if (b.id === fromId) {
+        return { ...b, balance: roundMoney(b.balance - roundedAmount) };
+      }
+      if (b.id === toId) {
+        return { ...b, balance: roundMoney(b.balance + roundedAmount) };
+      }
+      return b;
+    });
+
+    set({ bankAccounts: updatedBankAccounts });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  addMoneyToBank: (bankId: string, amount: number, _note?: string) => {
+    if (!isValidAmount(amount) || amount <= 0) {
+      return { ok: false, message: 'Please enter an amount greater than 0.' };
+    }
+    const { stats, bankAccounts } = get();
+    const targetBank = bankAccounts.find((b) => b.id === bankId);
+    if (!targetBank) {
+      return { ok: false, message: 'Bank account not found.' };
+    }
+
+    const roundedAmount = roundMoney(amount);
+    const updatedBankAccounts = bankAccounts.map((b) =>
+      b.id === bankId ? { ...b, balance: roundMoney(b.balance + roundedAmount) } : b
+    );
+    const pendingAmount = stats.pendingRollover?.amount ?? 0;
+    const newTotalBank = roundMoney(
+      updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0) + pendingAmount
+    );
+
+    const newStats: UserStats = {
+      ...stats,
+      totalBank: newTotalBank,
+    };
+
+    set({ stats: newStats, bankAccounts: updatedBankAccounts });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  distributeRollover: (target: string | Record<string, number>) => {
+    const { stats, bankAccounts } = get();
+    if (!stats.pendingRollover) {
+      return { ok: false, message: 'No pending rollover to distribute.' };
+    }
+    const rolloverAmount = stats.pendingRollover.amount;
+
+    const allocations: Record<string, number> = {};
+    if (typeof target === 'string') {
+      const targetBank = bankAccounts.find((b) => b.id === target);
+      if (!targetBank) {
+        return { ok: false, message: 'Selected bank account was not found.' };
+      }
+      allocations[target] = rolloverAmount;
+    } else if (typeof target === 'object' && target !== null) {
+      const totalAllocated = roundMoney(
+        Object.values(target).reduce((sum, amt) => sum + (Number.isFinite(amt) ? amt : 0), 0)
+      );
+      if (Math.abs(totalAllocated - rolloverAmount) > 0.05) {
+        return {
+          ok: false,
+          message: `Total allocated (₱ ${totalAllocated}) must equal rollover amount (₱ ${rolloverAmount}).`,
+        };
+      }
+      for (const [bId, amt] of Object.entries(target)) {
+        if (!bankAccounts.some((b) => b.id === bId)) {
+          return { ok: false, message: 'One of the selected bank accounts was not found.' };
+        }
+        if (amt < 0) {
+          return { ok: false, message: 'Allocation amounts cannot be negative.' };
+        }
+        allocations[bId] = roundMoney(amt);
+      }
+    } else {
+      return { ok: false, message: 'Invalid rollover distribution target.' };
+    }
+
+    const updatedBankAccounts = bankAccounts.map((b) => {
+      const addAmt = allocations[b.id] ? roundMoney(allocations[b.id]) : 0;
+      return addAmt > 0 ? { ...b, balance: roundMoney(b.balance + addAmt) } : b;
+    });
+    const newTotalBank = roundMoney(updatedBankAccounts.reduce((sum, b) => sum + b.balance, 0));
+
+    const newStats: UserStats = {
+      ...stats,
+      totalBank: newTotalBank,
+      pendingRollover: null,
+    };
+
+    set({ stats: newStats, bankAccounts: updatedBankAccounts });
+    persistCurrentData();
+    return { ok: true };
+  },
+
+  dismissPendingRollover: () => {
+    // Keep pendingRollover intact so unallocated rollover savings are never lost.
   },
   });
 });

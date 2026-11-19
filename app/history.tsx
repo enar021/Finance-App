@@ -45,7 +45,7 @@ function roundMoney(value: number): number {
 }
 
 export default function HistoryScreen() {
-  const { expenses, stats, savingsHistory, checkAndAdvanceMonth } = useFinanceStore();
+  const { expenses, stats, savingsHistory, checkAndAdvanceMonth, isLoaded } = useFinanceStore();
   const { width } = useWindowDimensions();
   const narrowPhone = isNarrow(width);
   const [filterType, setFilterType] = useState<FilterType>("current");
@@ -63,9 +63,11 @@ export default function HistoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      checkAndAdvanceMonth();
+      if (isLoaded) {
+        checkAndAdvanceMonth();
+      }
       setAnimKey((k) => k + 1);
-    }, [checkAndAdvanceMonth]),
+    }, [checkAndAdvanceMonth, isLoaded]),
   );
 
   const currentMonthLabel = stats.currentMonthLabel || getMonthLabel();

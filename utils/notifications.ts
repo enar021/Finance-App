@@ -264,44 +264,37 @@ export async function syncNativeScheduledReminders(): Promise<void> {
 
   try {
     await ensureAndroidChannel();
+    await cancelNativeDailyReminders();
 
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    const hasMidday = scheduled.some((item) => item.identifier === MIDDAY_NOTIF_ID);
-    const hasEvening = scheduled.some((item) => item.identifier === EVENING_NOTIF_ID);
+    await Notifications.scheduleNotificationAsync({
+      identifier: MIDDAY_NOTIF_ID,
+      content: {
+        title: 'Penny Wise • Midday Check-in ☀️',
+        body: 'Grabbed lunch or morning coffee? Log your expenses in Penny Wise to stay within budget!',
+        sound: true,
+      },
+      trigger: {
+        type: 'daily' as Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: REMINDER_TIMES.midday.hour,
+        minute: REMINDER_TIMES.evening.minute,
+        ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
+      },
+    });
 
-    if (!hasMidday) {
-      await Notifications.scheduleNotificationAsync({
-        identifier: MIDDAY_NOTIF_ID,
-        content: {
-          title: 'Penny Wise • Midday Check-in ☀️',
-          body: 'Grabbed lunch or morning coffee? Log your expenses in Penny Wise to stay within budget!',
-          sound: true,
-        },
-        trigger: {
-          type: 'daily' as Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: REMINDER_TIMES.midday.hour,
-          minute: REMINDER_TIMES.midday.minute,
-          ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
-        },
-      });
-    }
-
-    if (!hasEvening) {
-      await Notifications.scheduleNotificationAsync({
-        identifier: EVENING_NOTIF_ID,
-        content: {
-          title: 'Penny Wise • Evening Wrap-up 🌙',
-          body: "Don't forget to record today's spending in Penny Wise before your day ends!",
-          sound: true,
-        },
-        trigger: {
-          type: 'daily' as Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: REMINDER_TIMES.evening.hour,
-          minute: REMINDER_TIMES.evening.minute,
-          ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
-        },
-      });
-    }
+    await Notifications.scheduleNotificationAsync({
+      identifier: EVENING_NOTIF_ID,
+      content: {
+        title: 'Penny Wise • Evening Wrap-up 🌙',
+        body: "Don't forget to record today's spending in Penny Wise before your day ends!",
+        sound: true,
+      },
+      trigger: {
+        type: 'daily' as Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: REMINDER_TIMES.evening.hour,
+        minute: REMINDER_TIMES.evening.minute,
+        ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
+      },
+    });
   } catch (err) {
     console.warn('Could not schedule native reminders:', err);
   }

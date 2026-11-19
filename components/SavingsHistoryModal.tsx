@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { THEME } from '@/constants/theme';
-import type { SavingsRecord } from '@/types';
+import type { BankAccount, SavingsRecord } from '@/types';
 import { formatCurrency, formatMonthLabel } from '@/utils/dates';
 
 interface SavingsHistoryModalProps {
@@ -23,8 +23,11 @@ interface SavingsHistoryModalProps {
   totalSavings: number;
   baseAllowance: number | null;
   history: SavingsRecord[];
+  bankAccounts?: BankAccount[];
   onClose: () => void;
 }
+
+const BANK_COLORS = ['#10B981', '#6366F1', '#F59E0B', '#EC4899', '#06B6D4', '#8B5CF6'];
 
 export default function SavingsHistoryModal({
   visible,
@@ -32,6 +35,7 @@ export default function SavingsHistoryModal({
   totalSavings,
   baseAllowance,
   history,
+  bankAccounts = [],
   onClose,
 }: SavingsHistoryModalProps) {
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
@@ -42,33 +46,19 @@ export default function SavingsHistoryModal({
     [history]
   );
 
-  // Calculate starting initial balance (totalSavings minus all recorded rollovers)
-  const initialBalance = Math.max(0, totalSavings - totalRolledOver);
-
-  // Construct data points for compounding trend graph (chronological order)
+  // Construct data points for recorded rollover totals only. Manual deposits and
+  // balance edits are not part of rollover history, so they must not create a
+  // fabricated "initial balance" point.
   const chartPoints = useMemo(() => {
     // Chronological order: oldest to newest
     const chronological = [...history].sort((a, b) => a.monthLabel.localeCompare(b.monthLabel));
-
-    const points: { label: string; fullLabel: string; value: number; change?: number }[] = [
-      {
-        label: 'Start',
-        fullLabel: 'Initial Balance',
-        value: initialBalance,
-      },
-    ];
-
-    chronological.forEach((rec) => {
-      points.push({
+    return chronological.map((rec) => ({
         label: formatMonthLabel(rec.monthLabel).split(' ')[0], // e.g. "Nov"
         fullLabel: formatMonthLabel(rec.monthLabel),
         value: rec.newTotalSavings,
         change: rec.rolloverAmount,
-      });
-    });
-
-    return points;
-  }, [history, initialBalance]);
+      }));
+  }, [history]);
 
   // Graph geometry
   const { width: windowWidth } = useWindowDimensions();
@@ -81,6 +71,13 @@ export default function SavingsHistoryModal({
 
   const { pathLine, pathArea, pointCoords } = useMemo(() => {
     const values = chartPoints.map((p) => p.value);
+    if (values.length === 0) {
+      return {
+        pathLine: '',
+        pathArea: '',
+        pointCoords: [],
+      };
+    }
     const minVal = Math.min(...values);
     const maxVal = Math.max(...values);
     const range = maxVal - minVal || 1;
@@ -193,20 +190,74 @@ export default function SavingsHistoryModal({
             </View>
           </View>
 
+          {/* Savings Distribution Breakdown Card */}
+          <View style={styles.breakdownCard}>
+            <View style={styles.breakdownHeader}>
+              <Text style={styles.breakdownSectionTitle}>SAVINGS DISTRIBUTION</Text>
+              <Text style={styles.breakdownSubtitle}>
+                {bankAccounts.length} {bankAccounts.length === 1 ? 'account' : 'accounts'}
+              </Text>
+            </View>
+
+            {/* Multi-bank Distribution Bar */}
+            {totalSavings > 0 && bankAccounts.length > 0 && (
+              <View style={styles.distribBarTrack}>
+                {bankAccounts.map((bank, idx) => {
+                  const pct = (bank.balance / totalSavings) * 100;
+                  const color = BANK_COLORS[idx % BANK_COLORS.length];
+                  return (
+                    <View
+                      key={bank.id}
+                      style={{
+                        backgroundColor: color,
+                        width: `${pct}%`,
+                        height: '100%',
+                      }}
+                    />
+                  );
+                })}
+              </View>
+            )}
+
+            {/* List of individual bank accounts */}
+            {bankAccounts.length > 0 ? (
+              <View style={styles.subBankContainer}>
+                {bankAccounts.map((bank, idx) => {
+                  const color = BANK_COLORS[idx % BANK_COLORS.length];
+                  const pct = totalSavings > 0 ? Math.round((bank.balance / totalSavings) * 100) : 0;
+                  return (
+                    <View key={bank.id} style={styles.subBankRow}>
+                      <View style={styles.subBankLeft}>
+                        <View style={[styles.bankColorDot, { backgroundColor: color }]} />
+                        <Text style={styles.subBankNameText}>{bank.name}</Text>
+                        <Text style={styles.subBankPctText}>· {pct}%</Text>
+                      </View>
+                      <Text style={styles.subBankAmountText}>
+                        ₱ {formatCurrency(bank.balance)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+
           {/* Savings Trend Graph Card */}
           <View style={styles.chartCard}>
             <View style={styles.chartCardHeader}>
               <View>
                 <Text style={styles.chartTitle}>GROWTH TIMELINE</Text>
                 <Text style={styles.chartSub}>
-                  {activePoint?.fullLabel ?? 'Savings Growth'}
+                  {activePoint?.fullLabel ?? 'No completed cycles yet'}
                 </Text>
               </View>
-              <View style={styles.chartBalanceBadge}>
-                <Text style={styles.chartBalanceText}>
-                  ₱ {formatCurrency(activePoint?.value ?? totalSavings)}
-                </Text>
-              </View>
+              {activePoint ? (
+                <View style={styles.chartBalanceBadge}>
+                  <Text style={styles.chartBalanceText}>
+                    ₱ {formatCurrency(activePoint.value)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             <Pressable
@@ -357,18 +408,6 @@ export default function SavingsHistoryModal({
                     </View>
                   );
                 })}
-
-                {/* Starting initial balance card */}
-                <View style={styles.initialRecordCard}>
-                  <View style={styles.initialIconSquare}>
-                    <Ionicons name="flag-outline" size={18} color={THEME.colors.textDark} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.initialTitle}>Initial Starting Balance</Text>
-                    <Text style={styles.initialSub}>Configured baseline deposit</Text>
-                  </View>
-                  <Text style={styles.initialAmount}>₱ {formatCurrency(initialBalance)}</Text>
-                </View>
               </View>
             )}
           </View>
@@ -593,27 +632,6 @@ const styles = StyleSheet.create({
   },
   recordBalanceLabel: { color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '600' },
   recordBalanceAmount: { color: THEME.colors.textDark, fontSize: 14, fontWeight: '800' },
-  initialRecordCard: {
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderColor: '#E2E8F0',
-    borderRadius: THEME.radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    padding: 14,
-  },
-  initialIconSquare: {
-    alignItems: 'center',
-    backgroundColor: THEME.colors.white,
-    borderRadius: 10,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  initialTitle: { color: THEME.colors.textDark, fontSize: 14, fontWeight: '800' },
-  initialSub: { color: THEME.colors.textSecondary, fontSize: 11, marginTop: 1 },
-  initialAmount: { color: THEME.colors.textDark, fontSize: 15, fontWeight: '800' },
   emptyCard: {
     alignItems: 'center',
     backgroundColor: THEME.colors.white,
@@ -638,5 +656,188 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 6,
     textAlign: 'center',
+  },
+  breakdownCard: {
+    backgroundColor: THEME.colors.white,
+    borderColor: '#E2E8F0',
+    borderRadius: THEME.radius.card,
+    borderWidth: 1,
+    padding: 18,
+    ...THEME.shadow.soft,
+  },
+  breakdownHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  breakdownTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+  breakdownSectionTitle: {
+    color: THEME.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  breakdownSubtitle: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  bankColorDot: {
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  distribBarTrack: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 4,
+    flexDirection: 'row',
+    height: 8,
+    marginBottom: 14,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  distribBarVault: {
+    backgroundColor: '#10B981',
+    height: '100%',
+  },
+  distribBarDistributed: {
+    backgroundColor: '#818CF8',
+    height: '100%',
+  },
+  breakdownGrid: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: 12,
+  },
+  breakdownColCard: {
+    flex: 1,
+  },
+  breakdownItemHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 4,
+  },
+  breakdownDotVault: {
+    backgroundColor: '#10B981',
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  breakdownDotDistributed: {
+    backgroundColor: '#818CF8',
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  breakdownItemLabel: {
+    color: THEME.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  breakdownItemAmount: {
+    color: THEME.colors.textDark,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  breakdownItemSub: {
+    color: THEME.colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  breakdownGridDivider: {
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 10,
+    width: 1,
+  },
+  subBankContainer: {
+    borderTopColor: '#F1F5F9',
+    borderTopWidth: 1,
+    marginTop: 14,
+    paddingTop: 12,
+    gap: 8,
+  },
+  subBankHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  subBankHeaderTitle: {
+    color: THEME.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  subBankManageText: {
+    color: '#059669',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  subBankRow: {
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderColor: '#F1F5F9',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  subBankLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  subBankIconSquare: {
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  subBankNameText: {
+    color: THEME.colors.textDark,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  subBankPctText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  subBankRight: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  subBankAmountText: {
+    color: THEME.colors.textDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  emptyDistributeBox: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  emptyDistributeText: {
+    color: THEME.colors.textSecondary,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

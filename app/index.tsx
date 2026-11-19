@@ -17,7 +17,11 @@ import AddMoneyModal from '@/components/AddMoneyModal';
 import BalanceHeroCard from '@/components/BalanceHeroCard';
 import ExpenseForm from '@/components/ExpenseForm';
 import ExpenseItem from '@/components/ExpenseItem';
-import SavingsCard from '@/components/SavingsCard';
+import DistributeSavingsModal from '@/components/DistributeSavingsModal';
+import DepositToBankModal from '@/components/DepositToBankModal';
+import AddBankModal from '@/components/AddBankModal';
+import PendingRolloverModal from '@/components/PendingRolloverModal';
+import SavingsCardCarousel from '@/components/SavingsCardCarousel';
 import SavingsHistoryModal from '@/components/SavingsHistoryModal';
 import { THEME } from '@/constants/theme';
 import { useFinanceStore } from '@/store/useFinanceStore';
@@ -33,7 +37,7 @@ import {
 } from '@/utils/dates';
 import { isNarrow } from '@/utils/responsive';
 import { showAlert } from '@/utils/alerts';
-import type { Expense } from '@/types';
+import type { BankAccount, Expense } from '@/types';
 
 type DashboardView = 'day' | 'weeks';
 
@@ -164,6 +168,7 @@ export default function Dashboard() {
     stats,
     expenses,
     savingsHistory,
+    bankAccounts,
     addExpense,
     addMoney,
     deleteExpense,
@@ -171,13 +176,19 @@ export default function Dashboard() {
     checkAndAdvanceMonth,
     hasAcceptedTerms,
     updateExpense,
+    addBankAccount,
+    transferBetweenBanks,
+    addMoneyToBank,
+    distributeRollover,
   } = useFinanceStore();
   const [view, setView] = useState<DashboardView>('day');
 
   useFocusEffect(
     useCallback(() => {
-      checkAndAdvanceMonth();
-    }, [checkAndAdvanceMonth])
+      if (isLoaded) {
+        checkAndAdvanceMonth();
+      }
+    }, [checkAndAdvanceMonth, isLoaded])
   );
 
   const [selectedDate, setSelectedDate] = useState(() =>
@@ -186,6 +197,11 @@ export default function Dashboard() {
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [showSavingsModal, setShowSavingsModal] = useState(false);
+  const [showDistributeModal, setShowDistributeModal] = useState(false);
+  const [distributeTargetBankId, setDistributeTargetBankId] = useState<string | undefined>(undefined);
+  const [bankToDeposit, setBankToDeposit] = useState<BankAccount | null>(null);
+  const [showAddBankModal, setShowAddBankModal] = useState(false);
+  const [isRolloverDismissed, setIsRolloverDismissed] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const dayPagerRef = useRef<any>(null);
   const isManualNavigationRef = useRef(false);
@@ -428,10 +444,46 @@ export default function Dashboard() {
             })}
           </View>
 
-          <SavingsCard
-            bankName={stats.bankName}
+          {Boolean(stats.pendingRollover && stats.pendingRollover.amount > 0) && (
+            <TouchableOpacity
+              style={[styles.pendingBanner, narrow && styles.pendingBannerNarrow]}
+              onPress={() => setIsRolloverDismissed(false)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Pending rollover distribution"
+            >
+              <View style={styles.pendingBannerLeft}>
+                <View style={styles.pendingBannerIcon}>
+                  <Ionicons name="sparkles" size={16} color="#059669" />
+                </View>
+                <View style={styles.pendingBannerTextCol}>
+                  <Text style={styles.pendingBannerTitle}>
+                    ₱ {formatCurrency(stats.pendingRollover!.amount)} Pending Rollover
+                  </Text>
+                  <Text style={styles.pendingBannerSub}>
+                    From {formatMonthLabel(stats.pendingRollover!.monthLabel)} · Tap to distribute
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.pendingBannerBtn}>
+                <Text style={styles.pendingBannerBtnText}>Distribute</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          <SavingsCardCarousel
+            mainSavingsName={stats.bankName || 'Main Savings'}
+            bankAccounts={bankAccounts}
             totalSavings={totalBank ?? 0}
-            onPress={() => setShowSavingsModal(true)}
+            pendingRolloverAmount={stats.pendingRollover?.amount ?? 0}
+            onOpenVaultHistory={() => setShowSavingsModal(true)}
+            onTransferPress={(targetBankId) => {
+              setDistributeTargetBankId(targetBankId);
+              setShowDistributeModal(true);
+            }}
+            onAddBankPress={() => setShowAddBankModal(true)}
+            onAddMoneyToBankPress={(bank) => setBankToDeposit(bank)}
+            onManageBanks={() => router.push('/settings/budget')}
           />
         </ScrollView>
 
@@ -452,6 +504,33 @@ export default function Dashboard() {
           />
         )}
 
+        {bankToDeposit && (
+          <DepositToBankModal
+            visible
+            bank={bankToDeposit}
+            onDeposit={addMoneyToBank}
+            onClose={() => setBankToDeposit(null)}
+          />
+        )}
+
+        {showAddBankModal && (
+          <AddBankModal
+            visible
+            onClose={() => setShowAddBankModal(false)}
+            onAddBank={addBankAccount}
+          />
+        )}
+
+        {Boolean(stats.pendingRollover && stats.pendingRollover.amount > 0) && (
+          <PendingRolloverModal
+            visible={Boolean(stats.pendingRollover && stats.pendingRollover.amount > 0) && !isRolloverDismissed}
+            pendingRollover={stats.pendingRollover}
+            bankAccounts={bankAccounts}
+            onSelectBank={distributeRollover}
+            onDismiss={() => setIsRolloverDismissed(true)}
+          />
+        )}
+
         {showSavingsModal && (
           <SavingsHistoryModal
             visible
@@ -459,7 +538,21 @@ export default function Dashboard() {
             totalSavings={totalBank ?? 0}
             baseAllowance={baseAllowance}
             history={savingsHistory}
+            bankAccounts={bankAccounts}
             onClose={() => setShowSavingsModal(false)}
+          />
+        )}
+
+        {showDistributeModal && (
+          <DistributeSavingsModal
+            visible
+            mainSavingsName={stats.bankName || 'Main Savings'}
+            totalSavings={totalBank ?? 0}
+            bankAccounts={bankAccounts}
+            initialTargetBankId={distributeTargetBankId}
+            onClose={() => setShowDistributeModal(false)}
+            onTransfer={transferBetweenBanks}
+            onAddBank={addBankAccount}
           />
         )}
       </SafeAreaView>
@@ -674,10 +767,46 @@ export default function Dashboard() {
           </Text>
         </View>
 
-        <SavingsCard
-          bankName={stats.bankName}
+        {Boolean(stats.pendingRollover && stats.pendingRollover.amount > 0) && (
+          <TouchableOpacity
+            style={[styles.pendingBanner, narrow && styles.pendingBannerNarrow]}
+            onPress={() => setIsRolloverDismissed(false)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Pending rollover distribution"
+          >
+            <View style={styles.pendingBannerLeft}>
+              <View style={styles.pendingBannerIcon}>
+                <Ionicons name="sparkles" size={16} color="#059669" />
+              </View>
+              <View style={styles.pendingBannerTextCol}>
+                <Text style={styles.pendingBannerTitle}>
+                  ₱ {formatCurrency(stats.pendingRollover!.amount)} Pending Rollover
+                </Text>
+                <Text style={styles.pendingBannerSub}>
+                  From {formatMonthLabel(stats.pendingRollover!.monthLabel)} · Tap to distribute
+                </Text>
+              </View>
+            </View>
+            <View style={styles.pendingBannerBtn}>
+              <Text style={styles.pendingBannerBtnText}>Distribute</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        <SavingsCardCarousel
+          mainSavingsName={stats.bankName || 'Main Savings'}
+          bankAccounts={bankAccounts}
           totalSavings={totalBank ?? 0}
-          onPress={() => setShowSavingsModal(true)}
+          pendingRolloverAmount={stats.pendingRollover?.amount ?? 0}
+          onOpenVaultHistory={() => setShowSavingsModal(true)}
+          onTransferPress={(targetBankId) => {
+            setDistributeTargetBankId(targetBankId);
+            setShowDistributeModal(true);
+          }}
+          onAddBankPress={() => setShowAddBankModal(true)}
+          onAddMoneyToBankPress={(bank) => setBankToDeposit(bank)}
+          onManageBanks={() => router.push('/settings/budget')}
         />
       </ScrollView>
 
@@ -728,6 +857,33 @@ export default function Dashboard() {
         />
       )}
 
+      {bankToDeposit && (
+        <DepositToBankModal
+          visible
+          bank={bankToDeposit}
+          onDeposit={addMoneyToBank}
+          onClose={() => setBankToDeposit(null)}
+        />
+      )}
+
+      {showAddBankModal && (
+        <AddBankModal
+          visible
+          onClose={() => setShowAddBankModal(false)}
+          onAddBank={addBankAccount}
+        />
+      )}
+
+      {Boolean(stats.pendingRollover && stats.pendingRollover.amount > 0) && (
+        <PendingRolloverModal
+          visible={Boolean(stats.pendingRollover && stats.pendingRollover.amount > 0) && !isRolloverDismissed}
+          pendingRollover={stats.pendingRollover}
+          bankAccounts={bankAccounts}
+          onSelectBank={distributeRollover}
+          onDismiss={() => setIsRolloverDismissed(true)}
+        />
+      )}
+
       {showSavingsModal && (
         <SavingsHistoryModal
           visible
@@ -735,7 +891,21 @@ export default function Dashboard() {
           totalSavings={totalBank ?? 0}
           baseAllowance={baseAllowance}
           history={savingsHistory}
+          bankAccounts={bankAccounts}
           onClose={() => setShowSavingsModal(false)}
+        />
+      )}
+
+      {showDistributeModal && (
+        <DistributeSavingsModal
+          visible
+          mainSavingsName={stats.bankName || 'Main Savings'}
+          totalSavings={totalBank ?? 0}
+          bankAccounts={bankAccounts}
+          initialTargetBankId={distributeTargetBankId}
+          onClose={() => setShowDistributeModal(false)}
+          onTransfer={transferBetweenBanks}
+          onAddBank={addBankAccount}
         />
       )}
     </SafeAreaView>
@@ -1000,4 +1170,59 @@ const styles = StyleSheet.create({
   warningTextGroup: { flex: 1 },
   warningTitle: { color: '#78350F', fontSize: 14, fontWeight: '800' },
   warningText: { color: '#92400E', fontSize: 12, lineHeight: 17, marginTop: 2 },
+  pendingBanner: {
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderRadius: THEME.radius.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  pendingBannerNarrow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  pendingBannerLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flex: 1,
+    gap: 10,
+  },
+  pendingBannerIcon: {
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    borderRadius: THEME.radius.full,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  pendingBannerTextCol: {
+    flex: 1,
+  },
+  pendingBannerTitle: {
+    color: '#065F46',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  pendingBannerSub: {
+    color: '#047857',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  pendingBannerBtn: {
+    backgroundColor: '#059669',
+    borderRadius: THEME.radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  pendingBannerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
