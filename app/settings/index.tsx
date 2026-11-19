@@ -50,7 +50,7 @@ export default function SettingsScreen() {
   const isConfigured = Boolean(
     stats.bankName && stats.baseAllowance !== null && stats.totalBank !== null
   );
-  const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
 
   useFocusEffect(
     useCallback(() => {

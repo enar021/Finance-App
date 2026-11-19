@@ -37,7 +37,7 @@ const DEFAULT_STATS: UserStats = {
   extraMoneyHistory: [],
   rolloverInProgressFromMonth: undefined,
   currentRemaining: null,
-  totalBank: null,
+  totalBank: 0,
   currentMonthLabel: getMonthLabel(),
 };
 
@@ -634,9 +634,11 @@ export const useFinanceStore = create<FinanceState>((set, get) => {
           : undefined,
       currentRemaining: null,
       totalBank:
-        bankName && isValidAmount(storedStats?.totalBank)
-          ? roundMoney(storedStats.totalBank)
-          : null,
+        bankName
+          ? isValidAmount(storedStats?.totalBank)
+            ? roundMoney(storedStats.totalBank)
+            : 0
+          : 0,
       currentMonthLabel:
         isValidMonthLabel(storedStats?.currentMonthLabel) &&
         (

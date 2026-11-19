@@ -15,7 +15,7 @@ import {
 import { showAlert } from '@/utils/alerts';
 
 export default function NotificationSettingsScreen() {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const [permission, setPermission] = useState<NotificationPermissionStatus>(
     getNotificationPermissionStatus()
   );

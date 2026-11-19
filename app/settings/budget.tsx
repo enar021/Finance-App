@@ -23,14 +23,14 @@ export default function BudgetSettingsScreen() {
     stats.baseAllowance === null ? '' : stats.baseAllowance.toString()
   );
   const [savingsInput, setSavingsInput] = useState(
-    stats.totalBank === null ? '' : stats.totalBank.toString()
+    stats.totalBank === null ? '0' : stats.totalBank.toString()
   );
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setBankName(stats.bankName);
     setAllowanceInput(stats.baseAllowance === null ? '' : stats.baseAllowance.toString());
-    setSavingsInput(stats.totalBank === null ? '' : stats.totalBank.toString());
+    setSavingsInput(stats.totalBank === null ? '0' : stats.totalBank.toString());
   }, [stats.bankName, stats.baseAllowance, stats.totalBank]);
 
   const isConfigured = Boolean(

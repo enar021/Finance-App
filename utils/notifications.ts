@@ -224,9 +224,9 @@ export async function sendTestReminder(): Promise<{ ok: boolean; status: Notific
 export async function areNotificationsEnabled(): Promise<boolean> {
   try {
     const val = await AsyncStorage.getItem(NOTIF_ENABLED_KEY);
-    return val === null ? true : val === 'true';
+    return val === null ? false : val === 'true';
   } catch {
-    return true;
+    return false;
   }
 }
 
